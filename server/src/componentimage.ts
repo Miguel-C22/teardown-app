@@ -4,11 +4,11 @@ interface WikiSummary {
 
 // Maps catalog partType values to Wikipedia article titles
 const PART_TYPE_ARTICLE: Record<string, string> = {
-  DIMM: "DDR4_SDRAM",
+  DIMM: "ECC_memory",
   HDD: "Hard_disk_drive",
   SSD: "Solid-state_drive",
   PSU: "Power_supply_unit_(computer)",
-  GPU: "Graphics_processing_unit",
+  GPU: "Video_card",
   NIC: "Network_interface_controller",
 };
 
@@ -24,7 +24,7 @@ export async function getComponentImageUrl(partType: string): Promise<string | n
   const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(article)}`;
   const response = await fetch(url, {
     headers: { "User-Agent": "teardown-app/1.0 (server-component-identifier)" },
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(2500),
   });
 
   if (!response.ok) { cache.set(key, null); return null; }

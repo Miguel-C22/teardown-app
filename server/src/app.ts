@@ -60,6 +60,9 @@ export function createApp(): Express {
       response.json({ ...result, recommendation, source });
     }
 
+    // UPC/EAN codes are 12–13 digits only; server part numbers are alphanumeric
+    const isUpc = /^\d{12,13}$/.test(query);
+
     // Try eBay first (if keys configured), fall back to static catalog
     const hasEbayKeys = !!process.env.EBAY_CLIENT_ID;
     const ebayPromise = hasEbayKeys ? lookupPart(query) : Promise.resolve(null);
@@ -68,19 +71,23 @@ export function createApp(): Express {
       .then(async (ebayResult) => {
         if (ebayResult) { sendResult(ebayResult, "ebay"); return; }
 
-        // Try UPCitemdb (handles UPC/EAN barcodes from consumer/commercial products)
-        const upcResult = await lookupUpc(query).catch(() => null);
-        if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
+        // UPCitemdb only handles numeric UPC/EAN codes — skip for alphanumeric part numbers
+        if (isUpc) {
+          const upcResult = await lookupUpc(query).catch(() => null);
+          if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
+        }
 
-        // Fall back to static catalog of server part number prefixes
+        // Static catalog of server part number prefixes
         const catalogEntry = lookupCatalog(query);
         if (!catalogEntry) { response.status(404).json({ error: "not found" }); return; }
         const imageUrl = await getComponentImageUrl(catalogEntry.partType).catch(() => null);
         sendResult({ ...catalogEntry, imageUrl, confidence: "medium", listingCount: 0 }, "catalog");
       })
       .catch(async () => {
-        const upcResult = await lookupUpc(query).catch(() => null);
-        if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
+        if (isUpc) {
+          const upcResult = await lookupUpc(query).catch(() => null);
+          if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
+        }
         const catalogEntry = lookupCatalog(query);
         if (!catalogEntry) { response.status(503).json({ error: "lookup unavailable" }); return; }
         const imageUrl = await getComponentImageUrl(catalogEntry.partType).catch(() => null);
