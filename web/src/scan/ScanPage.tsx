@@ -11,11 +11,13 @@ interface ActiveSession {
 export function ScanPage() {
   const [session, setSession] = useState<ActiveSession | null>(null);
   const [units, setUnits] = useState<ScannedUnit[]>([]);
+  const [startError, setStartError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
 
   const feedMode = import.meta.env.DEV ? searchParams.get("feed") ?? undefined : undefined;
 
-  useEffect(() => {
+  function createSession() {
+    setStartError(null);
     const now = new Date();
     const label = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     fetch("/api/sessions", {
@@ -23,16 +25,28 @@ export function ScanPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assetTag: label, model: "Quick scan" }),
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server error ${r.status}`);
+        return r.json();
+      })
       .then((s) => setSession(s as ActiveSession))
-      .catch(() => {/* camera error shown by CameraScanner */});
-  }, []);
+      .catch((err: unknown) => setStartError(err instanceof Error ? err.message : "Could not reach server"));
+  }
+
+  useEffect(() => { createSession(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!session) {
     return (
       <main className="screen">
         <a href="/" className="back">← Home</a>
-        <p className="muted">Starting camera…</p>
+        {startError ? (
+          <>
+            <p className="form-error">Could not start: {startError}</p>
+            <button className="btn-primary" onClick={createSession} style={{ marginTop: 16 }}>Retry</button>
+          </>
+        ) : (
+          <p className="muted">Starting…</p>
+        )}
       </main>
     );
   }
