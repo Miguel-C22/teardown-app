@@ -183,6 +183,62 @@ describe("CSV export", () => {
   });
 });
 
+describe("a label read in two goes", () => {
+  it("adds the serial to the drive recorded a moment earlier with only its model number", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    await request(app).post(`/api/sessions/${sessionId}/units`).send({ partType: "AUTO", partNumber: "ST2000DM001", serial: null });
+    const second = await request(app).post(`/api/sessions/${sessionId}/units`).send({ partType: "AUTO", partNumber: "ST2000DM001", serial: "Z1E41HH0" });
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ filledIn: true, serial: "Z1E41HH0", partNumber: "ST2000DM001", status: "ok" });
+    const session = await request(app).get(`/api/sessions/${sessionId}`);
+    expect(session.body.units).toHaveLength(1);
+  });
+
+  it("adds the part number to a unit first recorded by its serial alone", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    await request(app).post(`/api/sessions/${sessionId}/units`).send({ partType: "AUTO", serial: "ZC1ABC23" });
+    const second = await request(app).post(`/api/sessions/${sessionId}/units`).send({ partType: "AUTO", partNumber: "ST4000NM0035", serial: "ZC1ABC23" });
+    expect(second.body).toMatchObject({ filledIn: true, partNumber: "ST4000NM0035", partType: "HDD", verified: true });
+    const session = await request(app).get(`/api/sessions/${sessionId}`);
+    expect(session.body.units).toHaveLength(1);
+  });
+});
+
+describe("parts identified by appearance", () => {
+  it("prices an unreadable part from the AI's estimate and keeps it in review", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    const response = await request(app).post(`/api/sessions/${sessionId}/vision/closeup`).send({ image: TINY_JPEG_BASE64, fixture: "unreadable" });
+    expect(response.body.unit).toMatchObject({
+      partNumber: null, priceMin: 30, priceMax: 150, lookupSource: "ai-estimate", verified: false, recommendation: "REVIEW",
+    });
+  });
+
+  it("shows a price for sweep parts that have no readable part number", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    const response = await request(app).post(`/api/sessions/${sessionId}/vision/sweep`).send({ image: TINY_JPEG_BASE64 });
+    const cpu = (response.body.parts as Array<{ category: string; lookup: Record<string, unknown> | null }>).find((part) => part.category === "CPU");
+    expect(cpu?.lookup).toMatchObject({ source: "ai-estimate", priceMin: 40, priceMax: 120, name: "Intel Xeon Gold 6130" });
+  });
+
+  it("add by look carries the price, and a description price never verifies the part", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    const response = await request(app).post(`/api/sessions/${sessionId}/units`).send({
+      partType: "CPU", serial: null, manufacturer: "Intel", description: "Xeon Scalable under heatsink", identifiedBy: "visual",
+      searchQuery: "Intel Xeon Gold 6130", estimatedPriceUsd: { low: 40, high: 120 },
+    });
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      description: "Intel Xeon Gold 6130", priceMin: 40, priceMax: 120, lookupSource: "ai-estimate", verified: false, recommendation: "REVIEW",
+    });
+    expect(response.body.reviewReasons).toEqual(expect.arrayContaining(["visual-only", "needs-bench-test"]));
+  });
+});
+
 describe("model from the sweep", () => {
   it("fills an empty model from the chassis guess", async () => {
     const app = createApp();

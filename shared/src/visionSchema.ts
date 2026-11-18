@@ -14,6 +14,14 @@ export const NormalizedBoxSchema = z.object({
   height: z.number().describe("0 to 1 of image height"),
 });
 
+export const PriceRangeSchema = z.object({
+  low: z.number().describe("USD"),
+  high: z.number().describe("USD"),
+});
+
+const SEARCH_QUERY_HINT = "The most specific product name a reseller would search eBay for, from markings or appearance, e.g. 'Intel Xeon Gold 6130' or 'Samsung 32GB DDR4-2666 ECC RDIMM'. Null if only the category is clear.";
+const ESTIMATED_PRICE_HINT = "Rough used resale price range in USD for that product on the secondary market. Null if you cannot tell what product it is.";
+
 export const DetectedPartSchema = z.object({
   category: z.enum(PART_CATEGORIES),
   box: NormalizedBoxSchema,
@@ -22,6 +30,8 @@ export const DetectedPartSchema = z.object({
   printedText: z.array(PrintedTextSchema),
   confidence: z.enum(["high", "medium", "low"]),
   needsCloseUp: z.boolean().describe("true when the exact part number or serial is not fully legible"),
+  searchQuery: z.string().nullable().describe(SEARCH_QUERY_HINT),
+  estimatedPriceUsd: PriceRangeSchema.nullable().describe(ESTIMATED_PRICE_HINT),
 });
 
 export const CategoryCountSchema = z.object({
@@ -45,9 +55,12 @@ export const CloseupResultSchema = z.object({
   familyGuess: z.string().nullable(),
   printedText: z.array(PrintedTextSchema),
   confidence: z.enum(["high", "medium", "low"]),
+  searchQuery: z.string().nullable().describe(SEARCH_QUERY_HINT),
+  estimatedPriceUsd: PriceRangeSchema.nullable().describe(ESTIMATED_PRICE_HINT),
 });
 
 export type PrintedText = z.infer<typeof PrintedTextSchema>;
+export type PriceRange = z.infer<typeof PriceRangeSchema>;
 export type NormalizedBox = z.infer<typeof NormalizedBoxSchema>;
 export type DetectedPart = z.infer<typeof DetectedPartSchema>;
 export type SweepResult = z.infer<typeof SweepResultSchema>;

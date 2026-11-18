@@ -12,6 +12,15 @@ describe("groupCodesIntoLabels", () => {
     expect(labels[0]).toMatchObject({ partNumber: "ST4000NM0035", serial: "ZC1ABC23", manufacturerHint: "Seagate", categoryHint: "HDD" });
   });
 
+  it("reads a Seagate label with SN, model, PN and date as one drive", () => {
+    const labels = groupCodesIntoLabels([
+      code("Z1E41HH0", 40, 385, 330, 22), code("ST2000DM001", 40, 445, 330, 22),
+      code("1CH164-302", 40, 505, 310, 22), code("13395", 40, 565, 150, 22),
+    ]);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toMatchObject({ partNumber: "ST2000DM001", serial: "Z1E41HH0", categoryHint: "HDD" });
+  });
+
   it("keeps labels far apart as separate parts", () => {
     const labels = groupCodesIntoLabels([code("ZC1ABC23", 0, 0), code("ZC1ABC99", 900, 700)]);
     expect(labels).toHaveLength(2);

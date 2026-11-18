@@ -41,6 +41,7 @@ export interface Unit {
   priceMin: number | null;
   priceMax: number | null;
   lookupSource: string | null;
+  imageUrl: string | null;
   recommendation: Recommendation;
 }
 
@@ -80,7 +81,11 @@ const UNIT_COLUMNS: Array<[string, string]> = [
   ["identifiedBy", "TEXT NOT NULL DEFAULT 'barcode'"], ["evidence", "TEXT"], ["photoPath", "TEXT"],
   ["verified", "INTEGER NOT NULL DEFAULT 0"], ["reviewReasons", "TEXT NOT NULL DEFAULT '[]'"],
   ["priceMin", "REAL"], ["priceMax", "REAL"], ["lookupSource", "TEXT"], ["recommendation", "TEXT NOT NULL DEFAULT 'REVIEW'"],
+  ["imageUrl", "TEXT"],
 ];
+
+// A part-number-only unit this recent gets the serial when the rest of its label is read a moment later
+const FILL_IN_WINDOW_MS = 60_000;
 
 function getDatabase(): DatabaseSyncType {
   if (database) return database;
@@ -206,12 +211,54 @@ export function findUnitBySerial(sessionId: string, serial: string): Unit | null
   return row ? rowToUnit(row) : null;
 }
 
-// One row per physical unit: a serial already recorded in this session returns the existing unit
-export function addUnit(sessionId: string, newUnit: NewUnit): { unit: Unit; duplicate: boolean } | null {
+function findRecentUnitWithoutSerial(sessionId: string, partNumber: string): Unit | null {
+  const since = new Date(Date.now() - FILL_IN_WINDOW_MS).toISOString();
+  if (IS_VERCEL) {
+    const candidates = (memoryUnits.get(sessionId) ?? []).filter((unit) => unit.partNumber === partNumber && !unit.serial && unit.scannedAt >= since);
+    return candidates.at(-1) ?? null;
+  }
+  const row = getDatabase().prepare("SELECT * FROM units WHERE sessionId = ? AND partNumber = ? AND serial IS NULL AND scannedAt >= ? ORDER BY scannedAt DESC")
+    .get(sessionId, partNumber, since) as unknown as UnitRow | undefined;
+  return row ? rowToUnit(row) : null;
+}
+
+// Replaces what we know about an existing unit, keeping its id, time and any photo already taken
+function fillInUnit(existing: Unit, newUnit: NewUnit): Unit {
+  const unit: Unit = {
+    ...newUnit,
+    id: existing.id,
+    sessionId: existing.sessionId,
+    scannedAt: existing.scannedAt,
+    photoPath: existing.photoPath ?? newUnit.photoPath,
+    imageUrl: newUnit.imageUrl ?? existing.imageUrl,
+    status: newUnit.serial ? "ok" : "review",
+  };
+  if (IS_VERCEL) {
+    const units = memoryUnits.get(existing.sessionId)!;
+    units[units.findIndex((stored) => stored.id === existing.id)] = unit;
+    return unit;
+  }
+  getDatabase().prepare(`
+    UPDATE units SET partType = ?, serial = ?, status = ?, partNumber = ?, manufacturer = ?, description = ?, identifiedBy = ?, evidence = ?,
+      photoPath = ?, verified = ?, reviewReasons = ?, priceMin = ?, priceMax = ?, lookupSource = ?, imageUrl = ?, recommendation = ?
+    WHERE id = ?
+  `).run(
+    unit.partType, unit.serial, unit.status, unit.partNumber, unit.manufacturer, unit.description, unit.identifiedBy, unit.evidence,
+    unit.photoPath, unit.verified ? 1 : 0, JSON.stringify(unit.reviewReasons), unit.priceMin, unit.priceMax, unit.lookupSource, unit.imageUrl,
+    unit.recommendation, unit.id,
+  );
+  return unit;
+}
+
+// One row per physical unit: a known serial returns the existing unit, and a label read in two goes fills in what was missing
+export function addUnit(sessionId: string, newUnit: NewUnit): { unit: Unit; duplicate: boolean; filledIn: boolean } | null {
   if (!sessionExists(sessionId)) return null;
   if (newUnit.serial) {
     const existing = findUnitBySerial(sessionId, newUnit.serial);
-    if (existing) return { unit: existing, duplicate: true };
+    if (existing && !existing.partNumber && newUnit.partNumber) return { unit: fillInUnit(existing, newUnit), duplicate: false, filledIn: true };
+    if (existing) return { unit: existing, duplicate: true, filledIn: false };
+    const waitingForSerial = newUnit.partNumber ? findRecentUnitWithoutSerial(sessionId, newUnit.partNumber) : null;
+    if (waitingForSerial) return { unit: fillInUnit(waitingForSerial, newUnit), duplicate: false, filledIn: true };
   }
   const unit: Unit = {
     ...newUnit,
@@ -222,18 +269,18 @@ export function addUnit(sessionId: string, newUnit: NewUnit): { unit: Unit; dupl
   };
   if (IS_VERCEL) {
     memoryUnits.get(sessionId)!.push(unit);
-    return { unit, duplicate: false };
+    return { unit, duplicate: false, filledIn: false };
   }
   getDatabase().prepare(`
     INSERT INTO units (id, sessionId, partType, serial, status, scannedAt, partNumber, manufacturer, description,
-      identifiedBy, evidence, photoPath, verified, reviewReasons, priceMin, priceMax, lookupSource, recommendation)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      identifiedBy, evidence, photoPath, verified, reviewReasons, priceMin, priceMax, lookupSource, imageUrl, recommendation)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     unit.id, unit.sessionId, unit.partType, unit.serial, unit.status, unit.scannedAt, unit.partNumber, unit.manufacturer,
     unit.description, unit.identifiedBy, unit.evidence, unit.photoPath, unit.verified ? 1 : 0, JSON.stringify(unit.reviewReasons),
-    unit.priceMin, unit.priceMax, unit.lookupSource, unit.recommendation,
+    unit.priceMin, unit.priceMax, unit.lookupSource, unit.imageUrl, unit.recommendation,
   );
-  return { unit, duplicate: false };
+  return { unit, duplicate: false, filledIn: false };
 }
 
 export function addSweep(sessionId: string, countsByCategory: CategoryCount[], chassisModelGuess: string | null, photoPath: string | null): StoredSweep {

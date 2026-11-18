@@ -4,7 +4,7 @@ import { groupCodesIntoLabels, type DecodedCode, type LabelGroup } from "@shared
 import { PART_CATEGORIES } from "@shared/partCategory";
 import { isHighValue } from "@shared/recommend";
 import {
-  formatPrice, postJson, type CloseupResponse, type NewUnitRequest, type SessionInfo, type SessionSummary, type SweepPartView, type SweepResponse, type UnitView,
+  PRICE_SOURCE_LABEL, formatPrice, postJson, type CloseupResponse, type NewUnitRequest, type SessionInfo, type SessionSummary, type SweepPartView, type SweepResponse, type UnitView,
 } from "../api";
 import { ComponentCard } from "./ComponentCard";
 import { captureStill, frameSignature, signatureDifference } from "./capture";
@@ -114,7 +114,10 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
     onUnit(unit);
     setLastUnit(unit);
     const value = unit.priceMax !== null ? ` · ${formatPrice(unit.priceMin, unit.priceMax)}` : "";
-    if (isHighValue(unit.priceMax)) {
+    if (unit.filledIn) {
+      vibrate(60);
+      showFeedback(`Updated: ${unit.partType} ${unit.partNumber ?? ""} now has serial ${unit.serial ?? "-"}`, "new");
+    } else if (isHighValue(unit.priceMax)) {
       vibrate([80, 60, 80]);
       showFeedback(`High value: ${unit.description ?? unit.partType}${value}`, "new");
     } else if (unit.status === "review") {
@@ -365,6 +368,8 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
       identifiedBy: part.partNumber ? "label-read" : "visual",
       partNumberRead: Boolean(part.partNumber),
       evidence: part.printedText.filter((printed) => printed.readFromImage).map((printed) => printed.text).join(" | ") || part.familyGuess,
+      searchQuery: part.searchQuery,
+      estimatedPriceUsd: part.estimatedPriceUsd,
     });
     if (unit) {
       setSweepParts((previous) => previous.map((listed) => (listed.index === part.index ? { ...listed, unitId: unit.id, duplicate: unit.duplicate === true } : listed)));
@@ -488,7 +493,9 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
                   <span className="sweep-part-name" data-testid="sweep-part-description">{partDescription(part)}</span>
                   <span className="muted-inline">
                     {part.unitId ? (part.duplicate ? "already recorded" : "added") : "seen: not read yet"}
-                    {part.lookup ? ` · up to $${part.lookup.priceMax}` : ""}
+                    {part.lookup && (
+                      <span data-testid="sweep-part-price"> · {formatPrice(part.lookup.priceMin, part.lookup.priceMax)} ({PRICE_SOURCE_LABEL[part.lookup.source] ?? part.lookup.source})</span>
+                    )}
                   </span>
                 </span>
                 {!part.unitId && (

@@ -9,5 +9,7 @@
   "printedText": [
     { "text": "MZ7LH960HA", "kind": "partNumber", "readFromImage": false }
   ],
-  "confidence": "medium"
+  "confidence": "medium",
+  "searchQuery": "Samsung 960GB SATA SSD",
+  "estimatedPriceUsd": { "low": 40, "high": 70 }
 }

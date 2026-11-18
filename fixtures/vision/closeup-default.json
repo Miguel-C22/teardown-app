@@ -11,5 +11,7 @@
     { "text": "S1AB2C3D", "kind": "serial", "readFromImage": true },
     { "text": "32GB 2Rx4 PC4-2666V-RB2-12", "kind": "capacity", "readFromImage": true }
   ],
-  "confidence": "high"
+  "confidence": "high",
+  "searchQuery": "Samsung 32GB DDR4-2666 ECC RDIMM",
+  "estimatedPriceUsd": { "low": 25, "high": 40 }
 }

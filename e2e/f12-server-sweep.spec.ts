@@ -42,18 +42,35 @@ test("each found part shows what the AI thinks it is, even with no readable part
     "RAID · Dell · PERC mini mono controller",
   ]);
   await expect(page.getByTestId("sweep-part").nth(2)).toContainText("seen: not read yet");
+  await expect(page.getByTestId("sweep-part").nth(2).getByTestId("sweep-part-price")).toHaveText(" · $40–$120 (AI estimate)");
 });
 
-test("add by look records a part from its appearance for review", async ({ page }) => {
+test("add by look records a part from its appearance with a price, for review", async ({ page }) => {
   await startSession(page);
   await page.getByTestId("sweep-btn").click();
   const cpuRow = page.getByTestId("sweep-part").filter({ hasText: "Xeon Scalable under heatsink" });
   await cpuRow.getByTestId("sweep-add-btn").click();
 
   await expect(cpuRow).toContainText("added");
+  const card = page.getByTestId("component-card");
   await expect(page.getByTestId("card-recommendation")).toHaveText("REVIEW");
-  await expect(page.getByTestId("component-card")).toContainText("Xeon Scalable under heatsink");
+  await expect(card).toContainText("Intel Xeon Gold 6130");
+  await expect(card).toContainText("$40–$120");
+  await expect(card).toContainText("Rough AI estimate from the part's appearance");
   await expect(page.getByTestId("remaining-CPU")).toHaveText("CPUs 1/2");
+});
+
+test("a drive label read in two goes ends up as one drive with its serial", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("fake-scan-input").fill("ST2000DM001");
+  await page.getByTestId("inject-scan-btn").click();
+  await expect(page.locator(".recent-units .unit-row")).toHaveCount(1);
+
+  await page.getByTestId("fake-scan-input").fill("Z1E41HH0 | ST2000DM001 | 1CH164-302 | 13395");
+  await page.getByTestId("inject-scan-btn").click();
+  await expect(page.getByTestId("scan-feedback")).toContainText("now has serial Z1E41HH0");
+  await expect(page.locator(".recent-units .unit-row")).toHaveCount(1);
+  await expect(page.locator(".recent-units .unit-row")).toContainText("ST2000DM001 · Z1E41HH0");
 });
 
 test("close-up after a sweep reads the label and fills in the checklist", async ({ page }) => {

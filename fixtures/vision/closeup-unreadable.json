@@ -7,5 +7,7 @@
   "model": null,
   "familyGuess": "Xeon Scalable, LGA3647",
   "printedText": [],
-  "confidence": "low"
+  "confidence": "low",
+  "searchQuery": "Intel Xeon Scalable LGA3647",
+  "estimatedPriceUsd": { "low": 30, "high": 150 }
 }

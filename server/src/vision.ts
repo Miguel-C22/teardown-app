@@ -53,7 +53,10 @@ const SHARED_RULES = `Copy printed text exactly as printed, character for charac
 Set readFromImage to true only when every character of that text is legible in this image.
 Never complete, correct or guess a part number or serial; if it is partly hidden, blurred or cut off, set readFromImage to false.
 Label kinds: partNumber covers OEM spare numbers, Dell DP/N, HPE spare or option numbers and manufacturer part numbers; serial covers serial numbers, Dell PPIDs and HPE CT numbers.
-Ignore customer asset tags and anything that is not part of the component.`;
+Ignore customer asset tags and anything that is not part of the component.
+Many parts have no sticker, so identify them from what you can see: chip markings, heatsink stamps, connectors, slot type, PCB layout and logos.
+searchQuery is the most specific product name you can justify from the image, for searching resale listings; it is not a part number and never counts as one.
+estimatedPriceUsd is a rough used resale range for that product; keep it wide when unsure and null when you cannot tell the product.`;
 
 const SWEEP_SYSTEM = `You inspect photos of opened rack servers during teardown and find every component worth reselling.
 List each visible DIMM, CPU (a CPU under a heatsink counts as a CPU), HDD, SSD or NVMe drive (category SSD), PSU, NIC, RAID or HBA controller (category RAID), GPU, and other add-in card or boot module (category OTHER).

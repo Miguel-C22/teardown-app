@@ -3,7 +3,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { normalizeCategory } from "../../shared/src/partCategory.js";
 import { decideVerification, recommend, type IdentifiedBy } from "../../shared/src/recommend.js";
-import { lookupPartNumber, type PartLookup } from "./lookup.js";
+import { lookupPartNumber, type LookupSource, type PartLookup } from "./lookup.js";
+
+const DESCRIPTION_SOURCES: LookupSource[] = ["ebay-description", "ai-estimate"];
 import { photoDirectory, type NewUnit } from "./store.js";
 
 export interface IdentifyInput {
@@ -29,12 +31,14 @@ export async function buildUnit(input: IdentifyInput, knownLookup?: PartLookup |
   const partNumber = cleanText(input.partNumber);
   const serial = cleanText(input.serial)?.toUpperCase() ?? null;
   const lookup = knownLookup !== undefined ? knownLookup : partNumber ? await lookupPartNumber(partNumber) : null;
+  // A price found from the AI's description is not a part-number match, so it can never verify a part
+  const matchedByPartNumber = lookup !== null && !DESCRIPTION_SOURCES.includes(lookup.source);
   const verification = decideVerification({
     identifiedBy: input.identifiedBy,
     partNumber,
     partNumberRead: input.partNumberRead,
     serial,
-    lookupMatched: lookup !== null,
+    lookupMatched: matchedByPartNumber,
   });
   const requestedType = cleanText(input.partType);
   const partType = requestedType && requestedType.toUpperCase() !== "AUTO"
@@ -56,6 +60,7 @@ export async function buildUnit(input: IdentifyInput, knownLookup?: PartLookup |
       priceMin: lookup?.priceMin ?? null,
       priceMax: lookup?.priceMax ?? null,
       lookupSource: lookup?.source ?? null,
+      imageUrl: lookup?.imageUrl ?? null,
       recommendation: recommend(verification.verified, lookup?.priceMax ?? null),
     },
   };

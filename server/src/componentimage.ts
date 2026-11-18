@@ -10,6 +10,8 @@ const PART_TYPE_ARTICLE: Record<string, string> = {
   PSU: "Power_supply_unit_(computer)",
   GPU: "Video_card",
   NIC: "Network_interface_controller",
+  CPU: "Central_processing_unit",
+  RAID: "Disk_array_controller",
 };
 
 const cache = new Map<string, string | null>();

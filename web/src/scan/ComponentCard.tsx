@@ -9,10 +9,14 @@ const SOURCE_DISCLAIMER: Record<string, string> = {
   ebay: "Price range from current eBay listings, not sold prices.",
   upcitemdb: "Price range from UPCitemdb recorded offers.",
   catalog: "Price range from the PoC starter catalog (illustrative estimate).",
+  "ebay-description": "Price range from eBay listings matching what the AI saw, not a part number. Confirm the exact model before selling.",
+  "ai-estimate": "Rough AI estimate from the part's appearance, not a market price. Confirm the exact model before selling.",
 };
 
 export function ComponentCard({ unit }: ComponentCardProps) {
-  const thumbnail = photoUrl(unit.photoPath);
+  // The tech's own photo when it was kept, otherwise an example picture of this kind of part
+  const ownPhoto = photoUrl(unit.photoPath);
+  const thumbnail = ownPhoto ?? unit.imageUrl;
   const highValue = isHighValue(unit.priceMax);
   return (
     <div className={`component-card${highValue ? " component-card-high" : ""}`} data-testid="component-card">
@@ -24,7 +28,7 @@ export function ComponentCard({ unit }: ComponentCardProps) {
       </div>
 
       <div className="component-identity">
-        {thumbnail && <img className="component-thumb" src={thumbnail} alt="Label photo" />}
+        {thumbnail && <img className="component-thumb" src={thumbnail} alt={ownPhoto ? "Photo of the part" : "Example picture of this part"} data-testid="component-image" />}
         <div className="component-meta">
           <strong className="component-name">{unit.description ?? `${unit.manufacturer ?? ""} ${unit.partType}`.trim()}</strong>
           <span className="component-detail muted">Part number: {unit.partNumber ?? "not read"}</span>

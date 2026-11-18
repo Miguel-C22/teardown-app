@@ -46,7 +46,9 @@ function unionBox(boxes: PixelBox[]): PixelBox {
 function buildGroup(members: Array<{ decoded: DecodedCode; classified: ClassifiedCode }>): LabelGroup {
   const classifiedCodes = members.map((member) => member.classified);
   const serialCode = classifiedCodes.find(isUnitSerial) ?? null;
-  const partNumberCode = classifiedCodes.find((code) => code.kind === "partNumber")
+  // A model number that names the product (ST2000DM001) prices better than a vendor-internal one (1CH164-302)
+  const partNumberCode = classifiedCodes.find((code) => code.kind === "partNumber" && code.categoryHint !== null)
+    ?? classifiedCodes.find((code) => code.kind === "partNumber")
     ?? classifiedCodes.find((code) => code.partNumber !== null)
     ?? null;
   return {

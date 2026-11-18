@@ -20,8 +20,10 @@ export interface UnitView {
   priceMin: number | null;
   priceMax: number | null;
   lookupSource: string | null;
+  imageUrl: string | null;
   recommendation: Recommendation;
   duplicate?: boolean;
+  filledIn?: boolean;
 }
 
 export interface SessionInfo {
@@ -46,7 +48,7 @@ export interface LookupView {
   imageUrl: string | null;
   confidence: "high" | "medium" | "low";
   listingCount: number;
-  source: "ebay" | "upcitemdb" | "catalog";
+  source: "ebay" | "upcitemdb" | "catalog" | "ebay-description" | "ai-estimate";
   recommendation: Recommendation;
 }
 
@@ -85,7 +87,18 @@ export interface NewUnitRequest {
   identifiedBy?: IdentifiedBy;
   evidence?: string | null;
   partNumberRead?: boolean;
+  searchQuery?: string | null;
+  estimatedPriceUsd?: { low: number; high: number } | null;
 }
+
+// Where a price came from, short enough for a list row
+export const PRICE_SOURCE_LABEL: Record<string, string> = {
+  ebay: "eBay",
+  upcitemdb: "UPCitemdb",
+  catalog: "catalog",
+  "ebay-description": "eBay, by description",
+  "ai-estimate": "AI estimate",
+};
 
 async function readJson<Body>(response: Response): Promise<Body> {
   const body = await response.json().catch(() => ({})) as Body & { error?: string };

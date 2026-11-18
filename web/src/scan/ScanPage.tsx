@@ -50,7 +50,10 @@ export function ScanPage() {
   }, [session, refreshSummary]);
 
   const handleUnit = useCallback((unit: UnitView) => {
-    setUnits((previous) => (previous.some((existing) => existing.id === unit.id) ? previous : [unit, ...previous]));
+    // A unit whose serial was filled in comes back with the same id, so it replaces the old row
+    setUnits((previous) => (previous.some((existing) => existing.id === unit.id)
+      ? previous.map((existing) => (existing.id === unit.id ? unit : existing))
+      : [unit, ...previous]));
     if (session) refreshSummary(session.id);
   }, [session, refreshSummary]);
 

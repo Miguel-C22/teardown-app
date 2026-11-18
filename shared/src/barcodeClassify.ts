@@ -43,6 +43,10 @@ const DELL_PPID = /^([A-Z]{2})-?(0[0-9A-Z]{5})-?([0-9A-Z]{5})-?([0-9A-Z]{3})-?([
 const DELL_PART_NUMBER = /^0[0-9A-Z]{5}$/;
 const HPE_SPARE_OR_OPTION = /^\d{6}-[0-9A-Z]{3}$/;
 const LENOVO_FRU = /^0[0-9][A-Z]{2}\d{3}$/;
+// Seagate's own part number under the model, e.g. PN 1CH164-302
+const SEAGATE_PART_NUMBER = /^\d[0-9A-Z]{2}\d{3}-\d{3}$/;
+// Short number-only codes are date codes, firmware or site codes, never a unit serial
+const SHORT_NUMBER_ONLY = /^\d{1,8}$/;
 const MAC_WITH_SEPARATORS = /^([0-9A-F]{2}[:-]){5}[0-9A-F]{2}$/;
 const BARE_HEX_12 = /^[0-9A-F]{12}$/;
 const WWN = /^5[0-9A-F]{15}$/;
@@ -69,6 +73,8 @@ export function classifyCode(rawText: string): ClassifiedCode {
   if (HPE_SPARE_OR_OPTION.test(upper)) return result(text, "partNumber", upper, "HPE", null);
   if (DELL_PART_NUMBER.test(upper) && hasLetterAndDigit(upper)) return result(text, "partNumber", upper, "Dell", null);
   if (LENOVO_FRU.test(upper)) return result(text, "partNumber", upper, "Lenovo", null);
+  if (SEAGATE_PART_NUMBER.test(upper)) return result(text, "partNumber", upper, "Seagate", null);
+  if (SHORT_NUMBER_ONLY.test(upper)) return result(text, "unknown", null, null, null);
 
   for (const knownPattern of PART_NUMBER_PATTERNS) {
     if (knownPattern.pattern.test(upper)) return result(text, "partNumber", upper, knownPattern.manufacturer, knownPattern.category);

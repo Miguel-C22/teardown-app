@@ -4,7 +4,8 @@ import { getComponentImageUrl } from "./componentimage.js";
 import { lookupPart } from "./ebay.js";
 import { lookupUpc } from "./upcitemdb.js";
 
-export type LookupSource = "ebay" | "upcitemdb" | "catalog";
+// ebay-description and ai-estimate price a part from what it looks like, never from a read part number
+export type LookupSource = "ebay" | "upcitemdb" | "catalog" | "ebay-description" | "ai-estimate";
 
 export interface PartLookup {
   query: string;
@@ -66,4 +67,36 @@ export async function lookupPartNumber(rawQuery: string): Promise<PartLookup | n
     listingCount: 0,
     source: "catalog",
   });
+}
+
+export interface DescriptionLookupInput {
+  searchQuery: string | null;
+  category: string;
+  estimatedPriceUsd: { low: number; high: number } | null;
+}
+
+// Prices a part identified by appearance: eBay listings for the AI's product name, else the AI's own rough range
+export async function lookupByDescription(input: DescriptionLookupInput): Promise<PartLookup | null> {
+  const query = input.searchQuery?.trim() ?? "";
+  const imageFor = async () => (process.env.VISION_MODE === "mock" ? null : await withTimeout(getComponentImageUrl(input.category), 2_500));
+
+  if (query && process.env.EBAY_CLIENT_ID) {
+    const ebayResult = await withTimeout(lookupPart(query), SOURCE_TIMEOUT_MS);
+    if (ebayResult) {
+      return {
+        ...ebayResult, query, partType: input.category, confidence: "low", source: "ebay-description",
+        imageUrl: ebayResult.imageUrl ?? await imageFor(), recommendation: recommend(false, ebayResult.priceMax),
+      };
+    }
+  }
+
+  const estimate = input.estimatedPriceUsd;
+  if (!estimate || !(estimate.high > 0)) return null;
+  const priceMin = Math.max(0, Math.round(Math.min(estimate.low, estimate.high)));
+  const priceMax = Math.round(Math.max(estimate.low, estimate.high));
+  return {
+    query, name: query || input.category, category: input.category, partType: input.category,
+    priceMin, priceMax, imageUrl: await imageFor(), confidence: "low", listingCount: 0, source: "ai-estimate",
+    recommendation: recommend(false, priceMax),
+  };
 }

@@ -69,6 +69,16 @@ describe("classifyCode", () => {
   });
 });
 
+describe("Seagate drive label", () => {
+  it("treats the PN under the model as a Seagate part number, not a serial", () => {
+    expect(classifyCode("1CH164-302")).toMatchObject({ kind: "partNumber", partNumber: "1CH164-302", manufacturerHint: "Seagate" });
+  });
+
+  it("ignores the short date code instead of taking it as a serial", () => {
+    expect(classifyCode("13395").kind).toBe("unknown");
+  });
+});
+
 describe("pickServerTag", () => {
   it("prefers a Dell service tag over component part numbers in the same view", () => {
     expect(pickServerTag(["M393A4K40CB2-CTD", "7XK2Q53", "CN-0HW7NR-78931-53P-0123-A00"])).toBe("7XK2Q53");

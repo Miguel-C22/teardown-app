@@ -11,7 +11,9 @@
         { "text": "CN0HW7NR7893153P0123A00", "kind": "serial", "readFromImage": true }
       ],
       "confidence": "high",
-      "needsCloseUp": false
+      "needsCloseUp": false,
+      "searchQuery": "Dell 1100W PSU 0HW7NR",
+      "estimatedPriceUsd": { "low": 20, "high": 45 }
     },
     {
       "category": "DIMM",
@@ -23,7 +25,9 @@
         { "text": "S1AB", "kind": "serial", "readFromImage": false }
       ],
       "confidence": "medium",
-      "needsCloseUp": true
+      "needsCloseUp": true,
+      "searchQuery": "Samsung 32GB DDR4 RDIMM",
+      "estimatedPriceUsd": { "low": 25, "high": 40 }
     },
     {
       "category": "CPU",
@@ -32,7 +36,9 @@
       "familyGuess": "Xeon Scalable under heatsink",
       "printedText": [],
       "confidence": "medium",
-      "needsCloseUp": true
+      "needsCloseUp": true,
+      "searchQuery": "Intel Xeon Gold 6130",
+      "estimatedPriceUsd": { "low": 40, "high": 120 }
     },
     {
       "category": "RAID",
@@ -41,7 +47,9 @@
       "familyGuess": "PERC mini mono controller",
       "printedText": [],
       "confidence": "low",
-      "needsCloseUp": true
+      "needsCloseUp": true,
+      "searchQuery": "Dell PERC H730P Mini Mono",
+      "estimatedPriceUsd": { "low": 25, "high": 60 }
     }
   ],
   "countsByCategory": [

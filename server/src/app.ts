@@ -3,9 +3,9 @@ import express, { type Express, type Response } from "express";
 import { buildCsv } from "../../shared/src/csvExport.js";
 import type { IdentifiedBy } from "../../shared/src/recommend.js";
 import { expectedCountsFromSweeps, remainingByCategory } from "../../shared/src/remaining.js";
-import { isNumberReadFromImage, readPartNumber, readSerial } from "../../shared/src/visionSchema.js";
+import { isNumberReadFromImage, readPartNumber, readSerial, type PriceRange } from "../../shared/src/visionSchema.js";
 import { buildUnit, savePhoto } from "./identify.js";
-import { lookupPartNumber } from "./lookup.js";
+import { lookupByDescription, lookupPartNumber } from "./lookup.js";
 import {
   addSweep, addUnit, createSession, getSession, getVisionUsage, listSessions, listSweeps, photoDirectory, recordVisionCall, sessionExists,
   setSessionModelIfEmpty,
@@ -38,6 +38,27 @@ function readImageBody(body: ImageBody, response: Response): Omit<VisionRequest,
   // Fixtures exist only so automated tests can choose a mock reading
   const fixture = visionMode() === "mock" && typeof body.fixture === "string" ? body.fixture : undefined;
   return { imageBase64, mediaType, fixture };
+}
+
+interface AppearanceInfo {
+  searchQuery?: string | null;
+  estimatedPriceUsd?: PriceRange | null;
+}
+
+function isPriceRange(value: unknown): value is PriceRange {
+  const candidate = value as PriceRange | null;
+  return typeof candidate?.low === "number" && typeof candidate?.high === "number";
+}
+
+// A read part number is priced first; a part known only by appearance falls back to its description
+async function priceLookup(partNumber: string | null, category: string, appearance: AppearanceInfo) {
+  const byPartNumber = partNumber ? await lookupPartNumber(partNumber) : null;
+  if (byPartNumber) return byPartNumber;
+  return lookupByDescription({
+    searchQuery: typeof appearance.searchQuery === "string" ? appearance.searchQuery : null,
+    category,
+    estimatedPriceUsd: isPriceRange(appearance.estimatedPriceUsd) ? appearance.estimatedPriceUsd : null,
+  });
 }
 
 function sendVisionError(visionError: unknown, response: Response): void {
@@ -93,7 +114,7 @@ export function createApp(): Express {
   });
 
   app.post("/api/sessions/:id/units", async (request, response) => {
-    const body = request.body as {
+    const body = request.body as AppearanceInfo & {
       partType?: string; serial?: string | null; partNumber?: string | null; manufacturer?: string | null;
       description?: string | null; identifiedBy?: string; evidence?: string | null; partNumberRead?: boolean;
     };
@@ -106,6 +127,10 @@ export function createApp(): Express {
       return;
     }
     const identifiedBy = IDENTIFIED_BY_VALUES.includes(body.identifiedBy as IdentifiedBy) ? body.identifiedBy as IdentifiedBy : "barcode";
+    // Only parts added by look carry the AI's description; barcode scans keep the part-number-only lookup
+    const knownLookup = identifiedBy === "visual" || body.searchQuery || body.estimatedPriceUsd
+      ? await priceLookup(body.partNumber?.trim() || null, body.partType, body)
+      : undefined;
     const { unit: newUnit } = await buildUnit({
       partType: body.partType,
       serial: body.serial ?? null,
@@ -116,13 +141,13 @@ export function createApp(): Express {
       identifiedBy,
       evidence: body.evidence ?? null,
       photoPath: null,
-    });
+    }, knownLookup);
     const added = addUnit(request.params.id, newUnit);
     if (!added) {
       response.status(404).json({ error: "session not found" });
       return;
     }
-    response.status(added.duplicate ? 200 : 201).json({ ...added.unit, duplicate: added.duplicate });
+    response.status(added.duplicate || added.filledIn ? 200 : 201).json({ ...added.unit, duplicate: added.duplicate, filledIn: added.filledIn });
   });
 
   app.post("/api/sessions/:id/vision/sweep", async (request, response) => {
@@ -140,12 +165,13 @@ export function createApp(): Express {
       const sweep = addSweep(session.id, vision.result.countsByCategory, vision.result.chassisModelGuess, photoPath);
       if (!session.model && vision.result.chassisModelGuess) setSessionModelIfEmpty(session.id, vision.result.chassisModelGuess);
 
-      // Sequential so two parts with the same serial can't both be added
+      // Prices are looked up in parallel; units are then added one by one so two parts with the same serial can't both be added
+      const lookups = await Promise.all(vision.result.parts.map((part) => priceLookup(readPartNumber(part), part.category, part)));
       const parts = [];
       for (const [index, part] of vision.result.parts.entries()) {
         const partNumber = readPartNumber(part);
         const serial = readSerial(part);
-        const lookup = partNumber ? await lookupPartNumber(partNumber) : null;
+        const lookup = lookups[index];
         let unitId: string | null = null;
         let duplicate = false;
         // Parts with both numbers legible are recorded straight away; the rest wait for a tap or a close-up
@@ -190,6 +216,7 @@ export function createApp(): Express {
         !serialRead && reading.serial ? `unconfirmed serial ${reading.serial}` : null,
       ].filter((note): note is string => note !== null);
       const photoPath = image.imageBase64 ? savePhoto(image.imageBase64, image.mediaType) : null;
+      const knownLookup = await priceLookup(partNumberRead ? reading.partNumber : null, reading.category, reading);
 
       const { unit: newUnit, lookup } = await buildUnit({
         partType: reading.category,
@@ -201,7 +228,7 @@ export function createApp(): Express {
         identifiedBy: partNumberRead ? "label-read" : "visual",
         evidence: [...legibleText, ...unconfirmed].join(" | ") || reading.familyGuess,
         photoPath,
-      });
+      }, knownLookup);
       const added = addUnit(session.id, newUnit);
       if (!added) {
         response.status(404).json({ error: "session not found" });

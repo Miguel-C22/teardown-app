@@ -19,6 +19,14 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 
 ## Checkpoint notes
 
+### Parts with no sticker, and drive labels — 2026-11-18
+- Vision now returns `searchQuery` (most specific product name) and `estimatedPriceUsd` per part. Parts with no readable part number are priced by eBay search on that name (`ebay-description`), else the AI's range (`ai-estimate`). Both are labelled on screen and can never verify a part (`server/src/identify.ts`).
+- Units carry `imageUrl` (eBay listing photo or a generic part-type picture), shown when the tech's own photo isn't kept (always on Vercel).
+- Barcodes: Seagate PN (`1CH164-302`) is a part number, short number-only codes (date `13395`) are ignored, and the model number is preferred over vendor-internal PNs within one label.
+- A label read in two goes fills in the same unit: a part-number-only unit gets the serial within 60 s, a serial-only unit gets the part number (`addUnit` in `server/src/store.ts`).
+- Found-parts list no longer clears when the camera moves; rows show the AI's description, price and source, with Read label / Add by look.
+- `npm test`: 95/95. `npm run e2e`: 64/64. Typecheck clean, build ok. Live AI and real phone: **not checked**.
+
 ### Scan-to-start — 2026-11-18
 - `/scan` opens the camera straight away; the session starts when the server tag is read twice in a row. No typing.
 - `pickServerTag` (`shared/src/barcodeClassify.ts`) skips part numbers, PPIDs, MACs, WWNs and UPCs, prefers a 7-character Dell service tag (also from a Dell QR link), else another serial.
