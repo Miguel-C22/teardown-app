@@ -43,6 +43,24 @@ function partTag(part: SweepPartView): string {
   return `${part.category} ${name}${value}`;
 }
 
+// What the AI saw, in plain words: "DIMM · Samsung · 32GB DDR4 RDIMM"
+function partDescription(part: SweepPartView): string {
+  const name = part.partNumber ?? part.familyGuess ?? "unidentified";
+  return [part.category, part.manufacturer, name].filter(Boolean).join(" · ");
+}
+
+// Names up to three different parts so the tech knows what was found without reading the list
+function sweepSummary(parts: SweepPartView[], recordedCount: number, unreadCount: number): string {
+  const countByDescription = new Map<string, number>();
+  for (const part of parts) {
+    const description = [part.manufacturer, part.familyGuess ?? part.category].filter(Boolean).join(" ");
+    countByDescription.set(description, (countByDescription.get(description) ?? 0) + 1);
+  }
+  const named = [...countByDescription.entries()].slice(0, 3).map(([description, count]) => (count > 1 ? `${count}× ${description}` : description));
+  const more = countByDescription.size > 3 ? ", …" : "";
+  return `Found ${parts.length} parts: ${named.join(", ")}${more}. ${recordedCount} recorded, ${unreadCount} not read yet.`;
+}
+
 function partColor(part: SweepPartView): string {
   if (part.unitId || (part.partNumber && part.lookup)) return "#2f9d5f";
   if (part.needsCloseUp || !part.partNumber) return "#e0ab52";
@@ -66,6 +84,9 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
   const [mockFixture, setMockFixture] = useState("default");
   const [lastUnit, setLastUnit] = useState<UnitView | null>(null);
   const [sweepParts, setSweepParts] = useState<SweepPartView[]>([]);
+  // Boxes stop lining up once the camera moves, so they hide but the found-parts list stays
+  const [boxesStale, setBoxesStale] = useState(false);
+  const boxesStaleRef = useRef(false);
   const [closeupHint, setCloseupHint] = useState<string | null>(null);
   const [pendingRepeat, setPendingRepeat] = useState<LabelGroup | null>(null);
   const [busy, setBusy] = useState<"sweep" | "closeup" | null>(null);
@@ -105,12 +126,14 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
     }
   }, [onUnit, showFeedback]);
 
-  const saveUnit = useCallback(async (request: NewUnitRequest) => {
+  const saveUnit = useCallback(async (request: NewUnitRequest): Promise<UnitView | null> => {
     try {
       const unit = await postJson<UnitView>(`/api/sessions/${session.id}/units`, request);
       announceUnit(unit, unit.duplicate === true);
+      return unit;
     } catch (saveError) {
       showFeedback(saveError instanceof Error ? saveError.message : "Could not save", "error");
+      return null;
     }
   }, [session.id, announceUnit, showFeedback]);
 
@@ -154,6 +177,8 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
         image: still?.base64, mediaType: still?.mediaType, fixture: isFeedMode ? mockFixture : undefined,
       });
       setSweepParts(sweep.parts);
+      boxesStaleRef.current = false;
+      setBoxesStale(false);
       onSessionUpdate(sweep.session);
       const newlyAdded = sweep.parts.filter((part) => part.unitId && !part.duplicate);
       const closeupCount = sweep.parts.filter((part) => !part.unitId && (part.needsCloseUp || !part.partNumber)).length;
@@ -162,7 +187,7 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
         if (unit) onUnit(unit);
       }
       if (sweep.parts.some((part) => isHighValue(part.lookup?.priceMax ?? null))) vibrate([80, 60, 80]);
-      showFeedback(`Sweep: ${sweep.parts.length} parts seen, ${newlyAdded.length} recorded, ${closeupCount} need a close-up`, closeupCount ? "review" : "new");
+      showFeedback(sweep.parts.length ? sweepSummary(sweep.parts, newlyAdded.length, closeupCount) : "No parts found in this view", closeupCount ? "review" : "new");
     } catch (sweepError) {
       showFeedback(sweepError instanceof Error ? sweepError.message : "Sweep failed", "error");
     } finally {
@@ -220,7 +245,7 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
       context.clearRect(0, 0, width, height);
       context.lineWidth = Math.max(3, width / 300);
       context.font = `600 ${Math.max(16, width / 45)}px system-ui, sans-serif`;
-      for (const part of sweepPartsRef.current) {
+      for (const part of boxesStaleRef.current ? [] : sweepPartsRef.current) {
         const left = part.box.x * width;
         const top = part.box.y * height;
         const color = partColor(part);
@@ -255,7 +280,10 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
         if (difference > MOVED_DIFFERENCE) {
           movedSinceSweep = true;
           steadySince = null;
-          if (sweepPartsRef.current.length) setSweepParts([]);
+          if (sweepPartsRef.current.length && !boxesStaleRef.current) {
+            boxesStaleRef.current = true;
+            setBoxesStale(true);
+          }
         } else if (difference < STEADY_DIFFERENCE) {
           steadySince ??= now;
         }
@@ -317,6 +345,7 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
 
   // Tapping a box on the camera view picks the smallest detected part under the finger
   function handleCameraTap(event: MouseEvent<HTMLDivElement>) {
+    if (boxesStale) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const tapX = (event.clientX - bounds.left) / bounds.width;
     const tapY = (event.clientY - bounds.top) / bounds.height;
@@ -327,7 +356,7 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
   }
 
   async function addSweptPart(part: SweepPartView) {
-    await saveUnit({
+    const unit = await saveUnit({
       partType: part.category,
       serial: part.serial,
       partNumber: part.partNumber,
@@ -337,6 +366,9 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
       partNumberRead: Boolean(part.partNumber),
       evidence: part.printedText.filter((printed) => printed.readFromImage).map((printed) => printed.text).join(" | ") || part.familyGuess,
     });
+    if (unit) {
+      setSweepParts((previous) => previous.map((listed) => (listed.index === part.index ? { ...listed, unitId: unit.id, duplicate: unit.duplicate === true } : listed)));
+    }
   }
 
   async function confirmRepeat() {
@@ -444,38 +476,39 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
         </div>
       )}
 
-      {pendingRepeat && (
-        <div className="repeat-prompt" data-testid="repeat-prompt">
-          <span>{pendingRepeat.partNumber} again with no serial. Another identical part?</span>
-          <button className="btn-primary" onClick={() => void confirmRepeat()} data-testid="repeat-add-btn">Add another</button>
-          <button className="btn-secondary" onClick={() => setPendingRepeat(null)}>Same part</button>
-        </div>
-      )}
-
       {sweepParts.length > 0 && (
         <section className="sweep-list" data-testid="sweep-list">
-          <h2 className="recent-heading">In view ({sweepParts.length})</h2>
+          <h2 className="recent-heading">Found in this view ({sweepParts.length})</h2>
+          {boxesStale && !isFeedMode && <p className="muted-inline" data-testid="boxes-hidden">Camera moved: boxes hidden. Tap a part below.</p>}
           <ul className="unit-list">
             {sweepParts.map((part) => (
               <li key={part.index} className="unit-row sweep-row" data-testid="sweep-part">
                 <span className="swatch" style={{ background: partColor(part) }} aria-hidden="true" />
-                <span className="unit-type">{part.category}</span>
-                <span className="unit-serial">
-                  {part.partNumber ?? part.familyGuess ?? "unidentified"}
-                  {part.lookup ? ` · $${part.lookup.priceMax}` : ""}
+                <span className="sweep-part-text">
+                  <span className="sweep-part-name" data-testid="sweep-part-description">{partDescription(part)}</span>
+                  <span className="muted-inline">
+                    {part.unitId ? (part.duplicate ? "already recorded" : "added") : "seen: not read yet"}
+                    {part.lookup ? ` · up to $${part.lookup.priceMax}` : ""}
+                  </span>
                 </span>
-                {part.unitId ? (
-                  <span className="unit-badge unit-badge-ok">{part.duplicate ? "already" : "added"}</span>
-                ) : (
+                {!part.unitId && (
                   <span className="row-actions">
-                    <button className="btn-secondary btn-small" onClick={() => startCloseup(part)} data-testid="sweep-closeup-btn">Close-up</button>
-                    <button className="btn-secondary btn-small" onClick={() => void addSweptPart(part)} data-testid="sweep-add-btn">Add</button>
+                    <button className="btn-secondary btn-small" onClick={() => startCloseup(part)} data-testid="sweep-closeup-btn">Read label</button>
+                    <button className="btn-secondary btn-small" onClick={() => void addSweptPart(part)} data-testid="sweep-add-btn">Add by look</button>
                   </span>
                 )}
               </li>
             ))}
           </ul>
         </section>
+      )}
+
+      {pendingRepeat && (
+        <div className="repeat-prompt" data-testid="repeat-prompt">
+          <span>{pendingRepeat.partNumber} again with no serial. Another identical part?</span>
+          <button className="btn-primary" onClick={() => void confirmRepeat()} data-testid="repeat-add-btn">Add another</button>
+          <button className="btn-secondary" onClick={() => setPendingRepeat(null)}>Same part</button>
+        </div>
       )}
 
       {lastUnit && <ComponentCard unit={lastUnit} />}

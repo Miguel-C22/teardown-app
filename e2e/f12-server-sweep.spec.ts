@@ -24,11 +24,36 @@ test("sweep lists parts in view, records legible ones and shows what's left", as
   await startSession(page);
   await page.getByTestId("sweep-btn").click();
 
-  await expect(page.getByTestId("scan-feedback")).toContainText("Sweep: 4 parts seen, 1 recorded, 3 need a close-up");
+  await expect(page.getByTestId("scan-feedback")).toContainText("Found 4 parts");
+  await expect(page.getByTestId("scan-feedback")).toContainText("1 recorded, 3 not read yet");
   await expect(page.getByTestId("sweep-part")).toHaveCount(4);
   await expect(page.getByTestId("remaining-DIMM")).toHaveText("DIMMs 0/12");
   await expect(page.getByTestId("remaining-PSU")).toHaveText("PSUs 1/2");
   await expect(page.getByTestId("remaining-CPU")).toHaveText("CPUs 0/2");
+});
+
+test("each found part shows what the AI thinks it is, even with no readable part number", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("sweep-btn").click();
+  await expect(page.getByTestId("sweep-part-description")).toHaveText([
+    "PSU · Dell · 0HW7NR",
+    "DIMM · Samsung · M393A4K40CB2-CTD",
+    "CPU · Intel · Xeon Scalable under heatsink",
+    "RAID · Dell · PERC mini mono controller",
+  ]);
+  await expect(page.getByTestId("sweep-part").nth(2)).toContainText("seen: not read yet");
+});
+
+test("add by look records a part from its appearance for review", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("sweep-btn").click();
+  const cpuRow = page.getByTestId("sweep-part").filter({ hasText: "Xeon Scalable under heatsink" });
+  await cpuRow.getByTestId("sweep-add-btn").click();
+
+  await expect(cpuRow).toContainText("added");
+  await expect(page.getByTestId("card-recommendation")).toHaveText("REVIEW");
+  await expect(page.getByTestId("component-card")).toContainText("Xeon Scalable under heatsink");
+  await expect(page.getByTestId("remaining-CPU")).toHaveText("CPUs 1/2");
 });
 
 test("close-up after a sweep reads the label and fills in the checklist", async ({ page }) => {

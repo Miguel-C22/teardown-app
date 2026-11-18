@@ -120,6 +120,8 @@ h1 { font-size: 32px; line-height: 1.1; margin: 6px 0 8px; }
 .repeat-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 12px; background: var(--surface); border: 1px solid var(--review); border-radius: 6px; }
 .repeat-prompt span { flex: 1 1 100%; }
 .sweep-list { margin-top: 16px; }
+.sweep-part-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sweep-part-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .field-row { display: flex; gap: 8px; }
