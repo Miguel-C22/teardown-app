@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import { createSession, getSession, listSessions, addUnit } from "./store.js";
 import { buildCsv } from "../../shared/src/csvExport.js";
 import { lookupPart } from "./ebay.js";
+import { lookupUpc } from "./upcitemdb.js";
 import { lookupCatalog } from "../../shared/src/catalog.js";
 
 export function createApp(): Express {
@@ -63,14 +64,21 @@ export function createApp(): Express {
     const ebayPromise = hasEbayKeys ? lookupPart(query) : Promise.resolve(null);
 
     ebayPromise
-      .then((ebayResult) => {
+      .then(async (ebayResult) => {
         if (ebayResult) { sendResult(ebayResult, "ebay"); return; }
-        // eBay unavailable or no results — try static catalog
+
+        // Try UPCitemdb (handles UPC/EAN barcodes from consumer/commercial products)
+        const upcResult = await lookupUpc(query).catch(() => null);
+        if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
+
+        // Fall back to static catalog of server part number prefixes
         const catalogEntry = lookupCatalog(query);
         if (!catalogEntry) { response.status(404).json({ error: "not found" }); return; }
         sendResult({ ...catalogEntry, imageUrl: null, confidence: "medium", listingCount: 0 }, "catalog");
       })
-      .catch(() => {
+      .catch(async () => {
+        const upcResult = await lookupUpc(query).catch(() => null);
+        if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
         const catalogEntry = lookupCatalog(query);
         if (!catalogEntry) { response.status(503).json({ error: "lookup unavailable" }); return; }
         sendResult({ ...catalogEntry, imageUrl: null, confidence: "medium", listingCount: 0 }, "catalog");
