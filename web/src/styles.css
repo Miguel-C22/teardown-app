@@ -157,3 +157,10 @@ h1 { font-size: 32px; line-height: 1.1; margin: 6px 0 8px; }
   .group-value { display: none; }
   .session-header { flex-wrap: wrap; }
 }
+
+/* Scan-to-start */
+.tag-camera { margin: 12px 0; }
+.start-fallbacks { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0; }
+.btn-link { background: none; border: none; padding: 4px 0; color: var(--accent); font-size: 14px; cursor: pointer; text-decoration: underline; }
+.session-header-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 12px; }
+.session-header-row .session-line { margin: 0; }

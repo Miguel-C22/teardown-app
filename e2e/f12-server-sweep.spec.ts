@@ -70,7 +70,7 @@ test("the same part number without a serial asks before adding a second part", a
 });
 
 test("bench groups identical parts with a quantity and shows gaps and vision calls", async ({ page }, testInfo) => {
-  const assetTag = `SVR-GROUP-${testInfo.project.name}-${Date.now()}`;
+  const assetTag = `SVR-GRP-${testInfo.project.name}-${Date.now().toString(36)}`.toUpperCase();
   await startSession(page, "/scan?feed=1", assetTag);
   await page.getByTestId("sweep-btn").click();
   await expect(page.getByTestId("sweep-part")).toHaveCount(4);

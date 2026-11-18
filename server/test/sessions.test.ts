@@ -31,10 +31,11 @@ describe("POST /api/sessions", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 400 when model is missing", async () => {
+  it("starts a session from the scanned tag alone, with the model left for the sweep to fill", async () => {
     const app = createApp();
     const response = await request(app).post("/api/sessions").send({ assetTag: "SVR-001" });
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(201);
+    expect(response.body.model).toBe("");
   });
 });
 

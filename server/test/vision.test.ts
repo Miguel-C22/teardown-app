@@ -182,3 +182,21 @@ describe("CSV export", () => {
     expect(csv.text).toContain(",label-read,yes,");
   });
 });
+
+describe("model from the sweep", () => {
+  it("fills an empty model from the chassis guess", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/sessions").send({ assetTag: "SVR-NO-MODEL" });
+    await request(app).post(`/api/sessions/${created.body.id}/vision/sweep`).send({ image: TINY_JPEG_BASE64 });
+    const summary = await request(app).get(`/api/sessions/${created.body.id}`);
+    expect(summary.body.model).toBe("Dell PowerEdge R740");
+  });
+
+  it("never overwrites a model that is already set", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/sessions").send({ assetTag: "SVR-HAS-MODEL", model: "PowerEdge R640" });
+    await request(app).post(`/api/sessions/${created.body.id}/vision/sweep`).send({ image: TINY_JPEG_BASE64 });
+    const summary = await request(app).get(`/api/sessions/${created.body.id}`);
+    expect(summary.body.model).toBe("PowerEdge R640");
+  });
+});

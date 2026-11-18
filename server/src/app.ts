@@ -8,6 +8,7 @@ import { buildUnit, savePhoto } from "./identify.js";
 import { lookupPartNumber } from "./lookup.js";
 import {
   addSweep, addUnit, createSession, getSession, getVisionUsage, listSessions, listSweeps, photoDirectory, recordVisionCall, sessionExists,
+  setSessionModelIfEmpty,
 } from "./store.js";
 import { VisionError, analyzeCloseup, analyzeSweep, visionMode, type VisionRequest } from "./vision.js";
 
@@ -70,11 +71,12 @@ export function createApp(): Express {
 
   app.post("/api/sessions", (request, response) => {
     const { assetTag, model } = request.body as { assetTag?: string; model?: string };
-    if (!assetTag?.trim() || !model?.trim()) {
-      response.status(400).json({ error: "assetTag and model are required" });
+    if (!assetTag?.trim()) {
+      response.status(400).json({ error: "assetTag is required" });
       return;
     }
-    response.status(201).json(createSession(assetTag.trim(), model.trim()));
+    // The model is optional: the first sweep fills it in from the chassis photo
+    response.status(201).json(createSession(assetTag.trim(), model?.trim() ?? ""));
   });
 
   app.get("/api/sessions", (_request, response) => {
@@ -132,10 +134,11 @@ export function createApp(): Express {
     const image = readImageBody(request.body as ImageBody, response);
     if (!image) return;
     try {
-      const vision = await analyzeSweep({ ...image, serverModel: session.model });
+      const vision = await analyzeSweep({ ...image, serverModel: session.model || null });
       recordVisionCall(session.id, "sweep", vision.mode, vision.usage.inputTokens, vision.usage.outputTokens, vision.usage.costUsd);
       const photoPath = image.imageBase64 ? savePhoto(image.imageBase64, image.mediaType) : null;
       const sweep = addSweep(session.id, vision.result.countsByCategory, vision.result.chassisModelGuess, photoPath);
+      if (!session.model && vision.result.chassisModelGuess) setSessionModelIfEmpty(session.id, vision.result.chassisModelGuess);
 
       // Sequential so two parts with the same serial can't both be added
       const parts = [];
@@ -176,7 +179,7 @@ export function createApp(): Express {
     const image = readImageBody(body, response);
     if (!image) return;
     try {
-      const vision = await analyzeCloseup({ ...image, serverModel: session.model, categoryHint: body.categoryHint ?? null });
+      const vision = await analyzeCloseup({ ...image, serverModel: session.model || null, categoryHint: body.categoryHint ?? null });
       recordVisionCall(session.id, "closeup", vision.mode, vision.usage.inputTokens, vision.usage.outputTokens, vision.usage.costUsd);
       const reading = vision.result;
       const partNumberRead = isNumberReadFromImage(reading.partNumber, reading.printedText);

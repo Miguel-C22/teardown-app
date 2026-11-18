@@ -54,11 +54,21 @@ export function ScanPage() {
     if (session) refreshSummary(session.id);
   }, [session, refreshSummary]);
 
-  if (!session) return <StartScreen onSessionCreated={setSession} />;
+  function rescanTag() {
+    setSession(null);
+    setSummary(null);
+    setUnits([]);
+  }
+
+  if (!session) return <StartScreen onSessionCreated={setSession} feedMode={feedMode} />;
+
+  // The model comes from the first sweep's chassis guess, so it is blank until then
+  const currentModel = summary?.model || session.model;
+  const modelText = currentModel || (summary && summary.sweepCount > 0 ? "Unknown model" : "Model: detecting…");
 
   return (
     <>
-      <CameraScanner session={session} onUnit={handleUnit} onSessionUpdate={setSummary} feedMode={feedMode} />
+      <CameraScanner session={session} onUnit={handleUnit} onSessionUpdate={setSummary} feedMode={feedMode} modelText={modelText} onRescanTag={rescanTag} />
       <RemainingTray rows={summary?.remaining ?? []} units={summary?.units ?? units} />
       {units.length > 0 && (
         <section className="screen recent-units">

@@ -157,7 +157,7 @@ export function BenchPage() {
             <div className="session-header">
               <div className="session-info">
                 <strong className="session-asset" data-testid="session-asset-tag">{session.assetTag}</strong>
-                <span className="session-model muted">{session.model}</span>
+                <span className="session-model muted">{session.model || "Unknown model"}</span>
                 <span className="session-date muted">{new Date(session.createdAt).toLocaleString()}</span>
               </div>
               <div className="session-actions">

@@ -1,28 +1,30 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { pickServerTag } from "@shared/barcodeClassify";
 import { postJson, type SessionInfo } from "../api";
 import { decodeFrame, initZxing } from "./zxing";
 
 interface StartScreenProps {
   onSessionCreated: (session: SessionInfo) => void;
+  feedMode?: string;
 }
 
-const COMMON_MODELS = [
-  "PowerEdge R640", "PowerEdge R740", "PowerEdge R740xd", "PowerEdge R650", "PowerEdge R750", "PowerEdge R630", "PowerEdge R730",
-  "ProLiant DL360 Gen9", "ProLiant DL360 Gen10", "ProLiant DL380 Gen9", "ProLiant DL380 Gen10", "ThinkSystem SR650", "Supermicro 1029U",
-];
+// Frames in a row that must agree on the tag before a session starts, so a half-read code can't start one
+const FRAMES_TO_CONFIRM = 2;
 
-// One-shot barcode reader for the server's service tag or serial
-function TagScanner({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
+// Live camera that keeps reading until the server's own tag is in view
+function TagCamera({ onTag }: { onTag: (tag: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const onCodeRef = useRef(onCode);
-  const [scanError, setScanError] = useState<string | null>(null);
+  const onTagRef = useRef(onTag);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
-  useEffect(() => { onCodeRef.current = onCode; }, [onCode]);
+  useEffect(() => { onTagRef.current = onTag; }, [onTag]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
     let stopped = false;
     let timer: number | null = null;
+    let lastTag: string | null = null;
+    let matchingFrames = 0;
     const canvas = document.createElement("canvas");
 
     async function readFrame() {
@@ -34,8 +36,11 @@ function TagScanner({ onCode, onClose }: { onCode: (code: string) => void; onClo
         const context = canvas.getContext("2d", { willReadFrequently: true })!;
         context.drawImage(video, 0, 0);
         const codes = await decodeFrame(context.getImageData(0, 0, canvas.width, canvas.height)).catch(() => []);
-        if (codes.length > 0) {
-          onCodeRef.current(codes[0].text);
+        const tag = pickServerTag(codes.map((code) => code.text));
+        matchingFrames = tag && tag === lastTag ? matchingFrames + 1 : tag ? 1 : 0;
+        lastTag = tag;
+        if (tag && matchingFrames >= FRAMES_TO_CONFIRM) {
+          onTagRef.current(tag);
           return;
         }
       }
@@ -43,7 +48,7 @@ function TagScanner({ onCode, onClose }: { onCode: (code: string) => void; onClo
     }
 
     initZxing()
-      .then(() => navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }))
+      .then(() => navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } }))
       .then(async (mediaStream) => {
         stream = mediaStream;
         if (stopped || !videoRef.current) return;
@@ -51,7 +56,7 @@ function TagScanner({ onCode, onClose }: { onCode: (code: string) => void; onClo
         await videoRef.current.play();
         void readFrame();
       })
-      .catch(() => setScanError("Camera unavailable. Type the tag instead."));
+      .catch(() => setCameraError("Camera unavailable. Allow camera access, or start without a tag below."));
 
     return () => {
       stopped = true;
@@ -60,84 +65,90 @@ function TagScanner({ onCode, onClose }: { onCode: (code: string) => void; onClo
     };
   }, []);
 
+  if (cameraError) return <p className="form-error camera-error">{cameraError}</p>;
   return (
-    <div className="tag-scanner">
-      {scanError ? <p className="form-error">{scanError}</p> : <video ref={videoRef} className="camera-video" autoPlay playsInline muted />}
-      <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+    <div className="camera-wrap tag-camera">
+      <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
     </div>
   );
 }
 
-export function StartScreen({ onSessionCreated }: StartScreenProps) {
-  const [assetTag, setAssetTag] = useState("");
-  const [model, setModel] = useState("");
+export function StartScreen({ onSessionCreated, feedMode }: StartScreenProps) {
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [scanningTag, setScanningTag] = useState(false);
+  const [starting, setStarting] = useState<string | null>(null);
+  const [typing, setTyping] = useState(false);
+  const [typedTag, setTypedTag] = useState("");
+  const [fakeCodes, setFakeCodes] = useState("");
+  const startedRef = useRef(false);
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  const startSession = useCallback(async (assetTag: string) => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    setStarting(assetTag);
     setError(null);
-    setSubmitting(true);
+    navigator.vibrate?.(80);
     try {
-      onSessionCreated(await postJson<SessionInfo>("/api/sessions", { assetTag, model }));
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to start session");
-    } finally {
-      setSubmitting(false);
+      onSessionCreated(await postJson<SessionInfo>("/api/sessions", { assetTag }));
+    } catch (startError) {
+      startedRef.current = false;
+      setStarting(null);
+      setError(startError instanceof Error ? startError.message : "Failed to start session");
     }
+  }, [onSessionCreated]);
+
+  function handleFakeScan(event: FormEvent) {
+    event.preventDefault();
+    const tag = pickServerTag(fakeCodes.split("|").map((code) => code.trim()).filter(Boolean));
+    if (tag) void startSession(tag);
+    else setError("No server tag in those codes");
+  }
+
+  function handleTypedTag(event: FormEvent) {
+    event.preventDefault();
+    if (typedTag.trim()) void startSession(typedTag.trim().toUpperCase());
   }
 
   return (
     <main className="screen">
       <a href="/" className="back">← Home</a>
       <p className="eyebrow">New teardown</p>
-      <h1>Start Session</h1>
-      <p className="muted">Scan or type the server's service tag, then pick its model. Every part found belongs to this server.</p>
-      <form className="start-form" onSubmit={handleSubmit}>
-        <label className="field">
-          <span className="field-label">Service tag or serial</span>
-          <span className="field-row">
-            <input
-              className="field-input"
-              type="text"
-              value={assetTag}
-              onChange={(event) => setAssetTag(event.target.value)}
-              placeholder="e.g. 7XK2Q53"
-              required
-              autoFocus
-              data-testid="asset-tag-input"
-            />
-            <button type="button" className="btn-secondary" onClick={() => setScanningTag(true)} data-testid="scan-tag-btn">Scan</button>
-          </span>
-        </label>
-        {scanningTag && (
-          <TagScanner
-            onCode={(code) => { setAssetTag(code); setScanningTag(false); }}
-            onClose={() => setScanningTag(false)}
-          />
-        )}
-        <label className="field">
-          <span className="field-label">Model</span>
+      <h1>Scan the server</h1>
+      <p className="muted" data-testid="start-prompt">
+        {starting ? `Starting ${starting}…` : "Point at the server's service tag. Scanning starts as soon as it's read."}
+      </p>
+
+      {!starting && (feedMode ? (
+        <form className="feed-mode feed-form" onSubmit={handleFakeScan} data-testid="tag-feed">
           <input
             className="field-input"
             type="text"
-            list="server-models"
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-            placeholder="PowerEdge R740"
-            required
-            data-testid="model-input"
+            value={fakeCodes}
+            onChange={(event) => setFakeCodes(event.target.value)}
+            placeholder="Codes in view, separated by |"
+            data-testid="fake-tag-input"
           />
-          <datalist id="server-models">
-            {COMMON_MODELS.map((modelName) => <option key={modelName} value={modelName} />)}
-          </datalist>
-        </label>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="btn-primary" type="submit" disabled={submitting} data-testid="start-session-btn">
-          {submitting ? "Starting…" : "Start scanning"}
-        </button>
-      </form>
+          <button className="btn-primary" type="submit" data-testid="inject-tag-btn">Inject scan</button>
+        </form>
+      ) : (
+        <TagCamera onTag={(tag) => void startSession(tag)} />
+      ))}
+
+      {error && <p className="form-error" role="alert">{error}</p>}
+
+      {!starting && (
+        <div className="start-fallbacks">
+          <button type="button" className="btn-link" onClick={() => void startSession(`UNTAGGED-${Date.now().toString(36).toUpperCase()}`)} data-testid="start-untagged-btn">
+            No tag? Start without one
+          </button>
+          {!typing && <button type="button" className="btn-link" onClick={() => setTyping(true)} data-testid="type-tag-btn">Type it</button>}
+        </div>
+      )}
+      {typing && !starting && (
+        <form className="field-row" onSubmit={handleTypedTag}>
+          <input className="field-input" type="text" value={typedTag} onChange={(event) => setTypedTag(event.target.value)} placeholder="Service tag" autoFocus data-testid="asset-tag-input" />
+          <button className="btn-primary" type="submit" data-testid="start-session-btn">Start</button>
+        </form>
+      )}
     </main>
   );
 }

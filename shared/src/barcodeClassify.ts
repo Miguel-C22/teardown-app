@@ -89,3 +89,28 @@ export function classifyCode(rawText: string): ClassifiedCode {
 export function isUnitSerial(code: ClassifiedCode): boolean {
   return code.kind === "serial" || code.kind === "ppid";
 }
+
+const DELL_SERVICE_TAG = /^[0-9A-Z]{7}$/;
+
+// A Dell QR code on the luggage tag is a link that ends in the service tag
+function tagFromUrl(text: string): string | null {
+  if (!/^https?:\/\//i.test(text)) return null;
+  const lastSegment = text.split(/[/?#=]/).filter(Boolean).pop()?.toUpperCase() ?? "";
+  return DELL_SERVICE_TAG.test(lastSegment) && hasLetterAndDigit(lastSegment) ? lastSegment : null;
+}
+
+// Picks the server's own tag from the codes in view, skipping component part numbers, PPIDs, MACs, WWNs and UPCs
+export function pickServerTag(codeTexts: string[]): string | null {
+  const candidates: string[] = [];
+  for (const codeText of codeTexts) {
+    const fromUrl = tagFromUrl(codeText.trim());
+    if (fromUrl) {
+      candidates.push(fromUrl);
+      continue;
+    }
+    const classified = classifyCode(codeText);
+    if (classified.kind === "serial") candidates.push(classified.text.toUpperCase());
+  }
+  const dellTag = candidates.find((candidate) => DELL_SERVICE_TAG.test(candidate) && hasLetterAndDigit(candidate));
+  return dellTag ?? candidates[0] ?? null;
+}

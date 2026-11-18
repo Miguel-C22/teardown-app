@@ -19,6 +19,8 @@ interface CameraScannerProps {
   session: SessionInfo;
   onUnit: (unit: UnitView) => void;
   onSessionUpdate: (summary: SessionSummary) => void;
+  modelText: string;
+  onRescanTag: () => void;
   feedMode?: string;
 }
 
@@ -47,7 +49,7 @@ function partColor(part: SweepPartView): string {
   return "#9aa7ae";
 }
 
-export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode }: CameraScannerProps) {
+export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, modelText, onRescanTag }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
@@ -366,7 +368,10 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode }: Ca
     <main className="screen screen-scan">
       <a href="/" className="back">← Home</a>
       <h1>Scanning</h1>
-      <p className="session-line" data-testid="session-line">{session.assetTag} · {session.model}</p>
+      <div className="session-header-row">
+        <p className="session-line" data-testid="session-line">{session.assetTag} · {modelText}</p>
+        <button type="button" className="btn-link" onClick={onRescanTag} data-testid="rescan-tag-btn">Wrong server? Rescan tag</button>
+      </div>
 
       <div className="part-type-row" aria-label="Part type override">
         {PART_TYPES.map((type) => (

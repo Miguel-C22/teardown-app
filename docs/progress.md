@@ -5,7 +5,7 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 | # | Feature | Milestone | Status |
 |---|---------|-----------|--------|
 | F0 | Project setup: repo, TypeScript, Vitest, Playwright, HTTPS dev server, health route | P1 | checkpoint |
-| F1 | Session and parent server (start screen: scan or type service tag, pick model) | P1 | checkpoint |
+| F1 | Session and parent server (scan-to-start: camera reads the service tag, model filled by the first sweep) | P1 | checkpoint |
 | F2 | Camera and barcodes, test feed mode, label grouping (part number + serial on one label) | P1 | checkpoint |
 | F3 | Units and dedup (client cooldown, server-side dedup by serial) | P1 | checkpoint |
 | F4 | Starter catalog (prefix catalog; catch-all prefixes removed; looked up by part number) | P2 | in progress |
@@ -18,6 +18,14 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 | F11 | PoC metrics (vision calls and cost per session; no session timer yet) | P3 | in progress |
 
 ## Checkpoint notes
+
+### Scan-to-start — 2026-11-18
+- `/scan` opens the camera straight away; the session starts when the server tag is read twice in a row. No typing.
+- `pickServerTag` (`shared/src/barcodeClassify.ts`) skips part numbers, PPIDs, MACs, WWNs and UPCs, prefers a 7-character Dell service tag (also from a Dell QR link), else another serial.
+- Model is optional on `POST /api/sessions`; the first sweep's chassis guess fills it once and never overwrites it.
+- Fallbacks: "No tag? Start without one" (UNTAGGED-…) and a tucked-away "Type it". Scanning header has "Wrong server? Rescan tag".
+- `npm test`: 87/87. `npm run e2e`: 58/58. Typecheck clean, build ok. f0/f1/f12 specs updated on purpose for the new start.
+- Real phone check: **not done**.
 
 ### Prototype 1: server sweep — 2026-11-18
 Built as one pass (approved plan), not one feature per checkpoint.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyCode, isUnitSerial } from "../src/barcodeClassify.js";
+import { classifyCode, isUnitSerial, pickServerTag } from "../src/barcodeClassify.js";
 
 describe("classifyCode", () => {
   it.each([
@@ -66,5 +66,23 @@ describe("classifyCode", () => {
     expect(classifyCode("https://example.com/x").kind).toBe("unknown");
     expect(classifyCode("   ").kind).toBe("unknown");
     expect(classifyCode("AB").kind).toBe("unknown");
+  });
+});
+
+describe("pickServerTag", () => {
+  it("prefers a Dell service tag over component part numbers in the same view", () => {
+    expect(pickServerTag(["M393A4K40CB2-CTD", "7XK2Q53", "CN-0HW7NR-78931-53P-0123-A00"])).toBe("7XK2Q53");
+  });
+
+  it("reads the service tag out of a Dell QR code link", () => {
+    expect(pickServerTag(["https://qrl.dell.com/7XK2Q53"])).toBe("7XK2Q53");
+  });
+
+  it("falls back to another serial such as an HPE server serial", () => {
+    expect(pickServerTag(["865414-B21", "CZJ8150ABC"])).toBe("CZJ8150ABC");
+  });
+
+  it("returns null when only part numbers, PPIDs, MACs or UPCs are in view", () => {
+    expect(pickServerTag(["ST4000NM0035", "CN0HW7NR7893153P0123A00", "00:1B:21:3A:4F:5C", "012345678905"])).toBeNull();
   });
 });

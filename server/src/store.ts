@@ -161,6 +161,18 @@ export function createSession(assetTag: string, model: string): Session {
   return session;
 }
 
+// The AI's chassis guess fills the model once; a model already set is never overwritten
+export function setSessionModelIfEmpty(sessionId: string, model: string): void {
+  const trimmed = model.trim();
+  if (!trimmed) return;
+  if (IS_VERCEL) {
+    const session = memorySessions.get(sessionId);
+    if (session && !session.model) session.model = trimmed;
+    return;
+  }
+  getDatabase().prepare("UPDATE sessions SET model = ? WHERE id = ? AND model = ''").run(trimmed, sessionId);
+}
+
 export function sessionExists(id: string): boolean {
   if (IS_VERCEL) return memorySessions.has(id);
   return getDatabase().prepare("SELECT id FROM sessions WHERE id = ?").get(id) !== undefined;

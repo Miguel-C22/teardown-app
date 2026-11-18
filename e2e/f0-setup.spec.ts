@@ -19,7 +19,7 @@ test("app loads over HTTPS with the server healthy and no console errors", async
 });
 
 for (const route of [
-  { path: "/scan", heading: "Start Session" },     // /scan asks for the parent server first
+  { path: "/scan", heading: "Scan the server" },   // /scan starts by scanning the server tag
   { path: "/bench", heading: "Sessions" },        // /bench shows sessions list (F10)
 ]) {
   test(`${route.path} route renders without console errors`, async ({ page }) => {
