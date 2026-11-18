@@ -3,6 +3,7 @@ import { createSession, getSession, listSessions, addUnit } from "./store.js";
 import { buildCsv } from "../../shared/src/csvExport.js";
 import { lookupPart } from "./ebay.js";
 import { lookupUpc } from "./upcitemdb.js";
+import { getComponentImageUrl } from "./componentimage.js";
 import { lookupCatalog } from "../../shared/src/catalog.js";
 
 export function createApp(): Express {
@@ -74,14 +75,16 @@ export function createApp(): Express {
         // Fall back to static catalog of server part number prefixes
         const catalogEntry = lookupCatalog(query);
         if (!catalogEntry) { response.status(404).json({ error: "not found" }); return; }
-        sendResult({ ...catalogEntry, imageUrl: null, confidence: "medium", listingCount: 0 }, "catalog");
+        const imageUrl = await getComponentImageUrl(catalogEntry.partType).catch(() => null);
+        sendResult({ ...catalogEntry, imageUrl, confidence: "medium", listingCount: 0 }, "catalog");
       })
       .catch(async () => {
         const upcResult = await lookupUpc(query).catch(() => null);
         if (upcResult) { sendResult(upcResult, "upcitemdb"); return; }
         const catalogEntry = lookupCatalog(query);
         if (!catalogEntry) { response.status(503).json({ error: "lookup unavailable" }); return; }
-        sendResult({ ...catalogEntry, imageUrl: null, confidence: "medium", listingCount: 0 }, "catalog");
+        const imageUrl = await getComponentImageUrl(catalogEntry.partType).catch(() => null);
+        sendResult({ ...catalogEntry, imageUrl, confidence: "medium", listingCount: 0 }, "catalog");
       });
   });
 
