@@ -1,71 +1,74 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CameraScanner, type ScannedUnit } from "./CameraScanner";
+import { CATEGORY_LABEL } from "@shared/partCategory";
+import type { RemainingRow } from "@shared/remaining";
+import { formatPrice, getJson, type SessionInfo, type SessionSummary, type UnitView } from "../api";
+import { CameraScanner } from "./CameraScanner";
+import { StartScreen } from "./StartScreen";
 
-interface ActiveSession {
-  id: string;
-  assetTag: string;
-  model: string;
+// Gaps first so the tech sees what still needs scanning
+function RemainingTray({ rows, units }: { rows: RemainingRow[]; units: UnitView[] }) {
+  const totalValue = units.reduce((sum, unit) => sum + (unit.priceMax ?? 0), 0);
+  const sorted = [...rows].sort((first, second) => (second.expected - second.found) - (first.expected - first.found));
+  return (
+    <section className="screen remaining-tray" data-testid="remaining-tray">
+      <div className="tray-summary">
+        <strong>{units.length} parts</strong>
+        <span className="muted-inline">up to {formatPrice(null, totalValue)}</span>
+      </div>
+      {sorted.length > 0 && (
+        <ul className="remaining-list">
+          {sorted.map((row) => (
+            <li
+              key={row.category}
+              className={`remaining-chip${row.found < row.expected ? " remaining-gap" : " remaining-done"}`}
+              data-testid={`remaining-${row.category}`}
+            >
+              {CATEGORY_LABEL[row.category]} {row.found}/{row.expected || row.found}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 export function ScanPage() {
-  const [session, setSession] = useState<ActiveSession | null>(null);
-  const [units, setUnits] = useState<ScannedUnit[]>([]);
-  const [startError, setStartError] = useState<string | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [units, setUnits] = useState<UnitView[]>([]);
   const [searchParams] = useSearchParams();
 
   const feedMode = import.meta.env.DEV ? searchParams.get("feed") ?? undefined : undefined;
 
-  function createSession() {
-    setStartError(null);
-    const now = new Date();
-    const label = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    fetch("/api/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetTag: label, model: "Quick scan" }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server error ${r.status}`);
-        return r.json();
-      })
-      .then((s) => setSession(s as ActiveSession))
-      .catch((err: unknown) => setStartError(err instanceof Error ? err.message : "Could not reach server"));
-  }
+  const refreshSummary = useCallback((sessionId: string) => {
+    getJson<SessionSummary>(`/api/sessions/${sessionId}`).then(setSummary).catch(() => undefined);
+  }, []);
 
-  useEffect(() => { createSession(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (session) refreshSummary(session.id);
+  }, [session, refreshSummary]);
 
-  if (!session) {
-    return (
-      <main className="screen">
-        <a href="/" className="back">← Home</a>
-        {startError ? (
-          <>
-            <p className="form-error">Could not start: {startError}</p>
-            <button className="btn-primary" onClick={createSession} style={{ marginTop: 16 }}>Retry</button>
-          </>
-        ) : (
-          <p className="muted">Starting…</p>
-        )}
-      </main>
-    );
-  }
+  const handleUnit = useCallback((unit: UnitView) => {
+    setUnits((previous) => (previous.some((existing) => existing.id === unit.id) ? previous : [unit, ...previous]));
+    if (session) refreshSummary(session.id);
+  }, [session, refreshSummary]);
+
+  if (!session) return <StartScreen onSessionCreated={setSession} />;
 
   return (
     <>
-      <CameraScanner
-        sessionId={session.id}
-        onUnit={(unit) => setUnits((prev) => [unit, ...prev])}
-        feedMode={feedMode}
-      />
+      <CameraScanner session={session} onUnit={handleUnit} onSessionUpdate={setSummary} feedMode={feedMode} />
+      <RemainingTray rows={summary?.remaining ?? []} units={summary?.units ?? units} />
       {units.length > 0 && (
         <section className="screen recent-units">
           <h2 className="recent-heading">Scanned ({units.length})</h2>
           <ul className="unit-list">
-            {units.slice(0, 20).map((unit, index) => (
-              <li key={index} className={`unit-row unit-${unit.status}`}>
+            {units.slice(0, 20).map((unit) => (
+              <li key={unit.id} className={`unit-row unit-${unit.status}`}>
                 <span className="unit-type">{unit.partType}</span>
-                <span className="unit-serial">{unit.serial ?? "(no serial)"}</span>
+                <span className="unit-serial">{unit.partNumber ? `${unit.partNumber} · ` : ""}{unit.serial ?? "(no serial)"}</span>
+                <span className={`unit-badge recommendation-badge-${unit.recommendation.toLowerCase()}`}>{unit.recommendation}</span>
                 <span className={`unit-badge unit-badge-${unit.status}`}>{unit.status}</span>
               </li>
             ))}

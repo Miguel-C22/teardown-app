@@ -1,0 +1,13 @@
+{
+  "readable": true,
+  "category": "SSD",
+  "manufacturer": "Samsung",
+  "partNumber": "MZ7LH960HAJR-00005",
+  "serial": null,
+  "model": null,
+  "familyGuess": "2.5in SATA SSD",
+  "printedText": [
+    { "text": "MZ7LH960HA", "kind": "partNumber", "readFromImage": false }
+  ],
+  "confidence": "medium"
+}

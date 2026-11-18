@@ -1,0 +1,11 @@
+{
+  "readable": false,
+  "category": "CPU",
+  "manufacturer": "Intel",
+  "partNumber": null,
+  "serial": null,
+  "model": null,
+  "familyGuess": "Xeon Scalable, LGA3647",
+  "printedText": [],
+  "confidence": "low"
+}

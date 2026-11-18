@@ -27,7 +27,6 @@ export const CATALOG: CatalogEntry[] = [
   { prefix: "HMA84GR7MFR4N", name: "SK Hynix 32GB DDR4 ECC RDIMM", category: "Server memory", partType: "DIMM", priceMin: 25, priceMax: 50 },
   { prefix: "HMA82GR7AFR8N", name: "SK Hynix 16GB DDR4 ECC RDIMM", category: "Server memory", partType: "DIMM", priceMin: 15, priceMax: 35 },
   { prefix: "HMA81GR7CJR8N", name: "SK Hynix 8GB DDR4 ECC RDIMM", category: "Server memory", partType: "DIMM", priceMin: 8, priceMax: 18 },
-  { prefix: "HMA", name: "SK Hynix Server DDR4 RDIMM", category: "Server memory", partType: "DIMM", priceMin: 15, priceMax: 60 },
 
   // ── Micron DIMM ───────────────────────────────────────────────────────────
   { prefix: "MTA36ASF8G72PZ", name: "Micron 64GB DDR4 ECC RDIMM", category: "Server memory", partType: "DIMM", priceMin: 70, priceMax: 140 },
@@ -47,7 +46,6 @@ export const CATALOG: CatalogEntry[] = [
   { prefix: "ST900MM", name: "Seagate 900GB 10K SAS HDD", category: "Hard drive", partType: "HDD", priceMin: 15, priceMax: 35 },
   { prefix: "ST600MP", name: "Seagate 600GB 15K SAS HDD", category: "Hard drive", partType: "HDD", priceMin: 20, priceMax: 50 },
   { prefix: "ST1000NM", name: "Seagate Exos 1TB Enterprise HDD", category: "Hard drive", partType: "HDD", priceMin: 20, priceMax: 45 },
-  { prefix: "ST", name: "Seagate Hard Drive", category: "Hard drive", partType: "HDD", priceMin: 15, priceMax: 60 },
 
   // ── Western Digital / HGST HDD ────────────────────────────────────────────
   { prefix: "WUS721212ALE6L4", name: "WD Gold 12TB Enterprise HDD", category: "Hard drive", partType: "HDD", priceMin: 80, priceMax: 150 },
@@ -57,8 +55,6 @@ export const CATALOG: CatalogEntry[] = [
   { prefix: "HUS726020ALA610", name: "HGST Ultrastar 7K6000 2TB HDD", category: "Hard drive", partType: "HDD", priceMin: 20, priceMax: 45 },
   { prefix: "WD4000FYYZ", name: "WD Re 4TB Enterprise HDD", category: "Hard drive", partType: "HDD", priceMin: 40, priceMax: 80 },
   { prefix: "WD2000FYYZ", name: "WD Re 2TB Enterprise HDD", category: "Hard drive", partType: "HDD", priceMin: 25, priceMax: 55 },
-  { prefix: "WD", name: "Western Digital Hard Drive", category: "Hard drive", partType: "HDD", priceMin: 20, priceMax: 80 },
-  { prefix: "HUS", name: "HGST Ultrastar Hard Drive", category: "Hard drive", partType: "HDD", priceMin: 20, priceMax: 80 },
 
   // ── Samsung SSD ───────────────────────────────────────────────────────────
   { prefix: "MZ7L33T8HBLT", name: "Samsung PM9A3 3.84TB NVMe SSD", category: "SSD", partType: "SSD", priceMin: 300, priceMax: 550 },

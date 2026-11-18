@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { startSession } from "./helpers";
 
 test("scan page enters feed mode when ?feed= param is present (dev build)", async ({ page }) => {
-  await page.goto("/scan?feed=1");
-  await expect(page.getByRole("heading", { name: "Scanning" })).toBeVisible();
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
   await expect(page.getByTestId("fake-scan-input")).toBeVisible();
 });
 
 test("injecting a barcode in feed mode records a unit and shows feedback", async ({ page }) => {
-  await page.goto("/scan?feed=1");
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
   await page.getByTestId("fake-scan-input").fill("SERIAL-XYZ-001");
@@ -19,7 +19,7 @@ test("injecting a barcode in feed mode records a unit and shows feedback", async
 });
 
 test("injecting the same barcode twice returns duplicate feedback", async ({ page }) => {
-  await page.goto("/scan?feed=1");
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
   await page.getByTestId("fake-scan-input").fill("SERIAL-DUP-001");
@@ -33,7 +33,7 @@ test("injecting the same barcode twice returns duplicate feedback", async ({ pag
 });
 
 test("part type selector switches the active type", async ({ page }) => {
-  await page.goto("/scan?feed=1");
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
   await page.getByTestId("part-type-PSU").click();

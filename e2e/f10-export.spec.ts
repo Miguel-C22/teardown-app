@@ -32,7 +32,7 @@ test("export CSV download includes correct headers and unit rows", async ({ page
 
   const csv = await csvResponse.text();
   const lines = csv.trim().split("\n");
-  expect(lines[0]).toBe("sessionId,assetTag,model,partType,serial,status,quantity,scannedAt");
+  expect(lines[0].startsWith("sessionId,assetTag,model,partType,serial,status,quantity,scannedAt,partNumber,")).toBe(true);
   expect(lines).toHaveLength(3); // header + 2 units
   expect(csv).toContain("PSU-CSV-001");
   expect(csv).toContain("HDD-CSV-001");

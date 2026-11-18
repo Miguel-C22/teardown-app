@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCsv } from "../src/csvExport.js";
+import { buildCsv, CSV_COLUMNS } from "../src/csvExport.js";
 
 const session = { id: "sess-1", assetTag: "SVR-001", model: "PowerEdge R740" };
 
@@ -12,14 +12,15 @@ describe("buildCsv", () => {
     const csv = buildCsv(session, units);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(3); // header + 2 data rows
-    expect(lines[0]).toBe("sessionId,assetTag,model,partType,serial,status,quantity,scannedAt");
+    expect(lines[0]).toBe(CSV_COLUMNS.join(","));
+    expect(lines[0].startsWith("sessionId,assetTag,model,partType,serial,status,quantity,scannedAt,partNumber,")).toBe(true);
   });
 
   it("includes all required columns in each row", () => {
     const units = [{ partType: "HDD", serial: "WD999", status: "ok", scannedAt: "2024-01-01T00:00:00.000Z" }];
     const csv = buildCsv(session, units);
     const dataRow = csv.trim().split("\n")[1];
-    expect(dataRow).toBe("sess-1,SVR-001,PowerEdge R740,HDD,WD999,ok,1,2024-01-01T00:00:00.000Z");
+    expect(dataRow).toBe("sess-1,SVR-001,PowerEdge R740,HDD,WD999,ok,1,2024-01-01T00:00:00.000Z,,,,,,,,,,");
   });
 
   it("sets serial to empty string for no-serial units (review items)", () => {
@@ -47,5 +48,23 @@ describe("buildCsv", () => {
     const units = [{ partType: "HDD", serial: "X1", status: "ok", scannedAt: "2024-01-01T00:00:00.000Z" }];
     const csv = buildCsv(modelSession, units);
     expect(csv).toContain('"Dell, Inc."');
+  });
+});
+
+describe("buildCsv lookup and identification columns", () => {
+  it("writes part number, value, recommendation and review reasons", () => {
+    const units = [{
+      partType: "PSU", serial: "CN0HW7NR7893153P0123A00", status: "ok", scannedAt: "2024-01-01T00:00:00.000Z",
+      partNumber: "0HW7NR", manufacturer: "Dell", description: "Dell 1100W Platinum PSU", identifiedBy: "barcode",
+      verified: true, priceMin: 40, priceMax: 80, lookupSource: "catalog", recommendation: "KEEP", reviewReasons: [],
+    }];
+    const dataRow = buildCsv(session, units).trim().split("\n")[1];
+    expect(dataRow).toBe("sess-1,SVR-001,PowerEdge R740,PSU,CN0HW7NR7893153P0123A00,ok,1,2024-01-01T00:00:00.000Z,0HW7NR,Dell,Dell 1100W Platinum PSU,barcode,yes,40,80,catalog,KEEP,");
+  });
+
+  it("joins several review reasons with spaces", () => {
+    const units = [{ partType: "CPU", serial: null, status: "review", scannedAt: "t", identifiedBy: "visual", verified: false, reviewReasons: ["no-serial", "visual-only"] }];
+    const dataRow = buildCsv(session, units).trim().split("\n")[1];
+    expect(dataRow.endsWith(",visual,no,,,,,no-serial visual-only")).toBe(true);
   });
 });

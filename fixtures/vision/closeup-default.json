@@ -1,0 +1,15 @@
+{
+  "readable": true,
+  "category": "DIMM",
+  "manufacturer": "Samsung",
+  "partNumber": "M393A4K40CB2-CTD",
+  "serial": "S1AB2C3D",
+  "model": null,
+  "familyGuess": "32GB 2Rx4 PC4-2666V RDIMM",
+  "printedText": [
+    { "text": "M393A4K40CB2-CTD", "kind": "partNumber", "readFromImage": true },
+    { "text": "S1AB2C3D", "kind": "serial", "readFromImage": true },
+    { "text": "32GB 2Rx4 PC4-2666V-RB2-12", "kind": "capacity", "readFromImage": true }
+  ],
+  "confidence": "high"
+}

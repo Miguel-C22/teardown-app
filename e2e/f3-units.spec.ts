@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { startSession } from "./helpers";
 
 test("no-serial scan records a review unit", async ({ page }) => {
-  await page.goto("/scan?feed=1");
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
   await page.getByTestId("fake-scan-input").fill("");
@@ -12,7 +13,7 @@ test("no-serial scan records a review unit", async ({ page }) => {
 });
 
 test("scanning 16 unique DIMM serials creates 16 unit rows", async ({ page }) => {
-  await page.goto("/scan?feed=1");
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
   await page.getByTestId("part-type-DIMM").click();
@@ -28,7 +29,7 @@ test("scanning 16 unique DIMM serials creates 16 unit rows", async ({ page }) =>
 });
 
 test("duplicate scan (past cooldown) shows already-recorded message", async ({ page }) => {
-  await page.goto("/scan?feed=1");
+  await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
   await page.getByTestId("fake-scan-input").fill("HDD-DEDUP-001");

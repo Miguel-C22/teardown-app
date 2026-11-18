@@ -29,7 +29,13 @@ Guide: https://claude.ai/artifact/K7J7Ros22QFpFVt6xMABrA
 - npm test           unit + API tests
 - npm run e2e        Playwright (uses installed Chrome) with fake camera
 - npm run typecheck  TypeScript check
-- npm run vision:eval  real-API run over the photo set (manual, needs approval; added in F9)
+- npm run vision:eval  real-API run over fixtures/photos (manual, costs money, needs approval)
+
+## Vision and secrets
+- Server reads `.env` (see `.env.example`): `OPENAI_API_KEY`, `VISION_MODE=live|mock`, optional `OPENAI_VISION_MODEL` and price overrides, optional eBay keys.
+- Vision uses the OpenAI Responses API with structured output (`openai` SDK, `zodTextFormat`); default model `gpt-6.2-sol`.
+- VISION_MODE defaults to live when a key is set, mock otherwise. Mock readings live in `fixtures/vision/`.
+- Storage is `node:sqlite` (built into Node 22.13+), no native build. `TEARDOWN_DATA_DIR` moves the data folder.
 
 ## HTTPS
 - Uses `.certs/cert.pem` + `.certs/key.pem` if present (e.g. from mkcert), otherwise generates a self-signed cert there.

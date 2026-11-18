@@ -1,0 +1,91 @@
+import type { PartCategory } from "./partCategory.js";
+
+export type CodeKind = "partNumber" | "ppid" | "serial" | "macAddress" | "wwn" | "upc" | "unknown";
+
+export interface ClassifiedCode {
+  text: string;
+  kind: CodeKind;
+  partNumber: string | null;
+  manufacturerHint: string | null;
+  categoryHint: PartCategory | null;
+}
+
+interface PartNumberPattern {
+  pattern: RegExp;
+  manufacturer: string;
+  category: PartCategory | null;
+}
+
+// Manufacturer part-number formats that show up on server component labels
+const PART_NUMBER_PATTERNS: PartNumberPattern[] = [
+  { pattern: /^M3[89]3[ABL][0-9A-Z]{6,}/, manufacturer: "Samsung", category: "DIMM" },
+  { pattern: /^HMA[A0-9][0-9A-Z]{6,}/, manufacturer: "SK Hynix", category: "DIMM" },
+  { pattern: /^HMCG[0-9A-Z]{6,}/, manufacturer: "SK Hynix", category: "DIMM" },
+  { pattern: /^MTA\d{1,2}[A-Z]{3}\d/, manufacturer: "Micron", category: "DIMM" },
+  { pattern: /^KSM\d{2}[RE]/, manufacturer: "Kingston", category: "DIMM" },
+  { pattern: /^ST\d{3,5}[A-Z]{2}\d{3,4}/, manufacturer: "Seagate", category: "HDD" },
+  { pattern: /^HU[SHCE]\d{3}[0-9A-Z]{4,}/, manufacturer: "HGST", category: "HDD" },
+  { pattern: /^WUH?S\d{5,}/, manufacturer: "Western Digital", category: "HDD" },
+  { pattern: /^WD\d{3,5}[A-Z]{4}/, manufacturer: "Western Digital", category: "HDD" },
+  { pattern: /^(AL1[345]|MG0\d|AL15)[A-Z]{2,4}\d{3}/, manufacturer: "Toshiba", category: "HDD" },
+  { pattern: /^PX0\d[A-Z]{2,4}\d{3}/, manufacturer: "Toshiba", category: "SSD" },
+  { pattern: /^MZ[7QWIP-][0-9A-Z]{6,}/, manufacturer: "Samsung", category: "SSD" },
+  { pattern: /^SSD[SP][CE]\d[A-Z]{2}\d/, manufacturer: "Intel", category: "SSD" },
+  { pattern: /^MTFD[A-Z]{3}\d/, manufacturer: "Micron", category: "SSD" },
+  { pattern: /^MCX\d{3,4}[A-Z]/, manufacturer: "Mellanox", category: "NIC" },
+  { pattern: /^(E10G\d{2}[A-Z]|X5[24]0[A-Z0-9]{2,}|X710[A-Z0-9]{2,}|XXV710[A-Z0-9]*|I350T\d)/, manufacturer: "Intel", category: "NIC" },
+  { pattern: /^BCM95\d{3}/, manufacturer: "Broadcom", category: "NIC" },
+  { pattern: /^(9[2-6]\d\d-\d{1,2}[ie])/i, manufacturer: "Broadcom/LSI", category: "RAID" },
+  { pattern: /^900-\d[A-Z0-9]{3,}/, manufacturer: "NVIDIA", category: "GPU" },
+];
+
+const DELL_PPID = /^([A-Z]{2})-?(0[0-9A-Z]{5})-?([0-9A-Z]{5})-?([0-9A-Z]{3})-?([0-9A-Z]{4})(?:-?([A-Z][0-9]{2}))?$/;
+const DELL_PART_NUMBER = /^0[0-9A-Z]{5}$/;
+const HPE_SPARE_OR_OPTION = /^\d{6}-[0-9A-Z]{3}$/;
+const LENOVO_FRU = /^0[0-9][A-Z]{2}\d{3}$/;
+const MAC_WITH_SEPARATORS = /^([0-9A-F]{2}[:-]){5}[0-9A-F]{2}$/;
+const BARE_HEX_12 = /^[0-9A-F]{12}$/;
+const WWN = /^5[0-9A-F]{15}$/;
+const UPC_OR_EAN = /^\d{12,13}$/;
+const SERIAL_LIKE = /^[0-9A-Z][0-9A-Z-]{4,29}$/;
+
+function hasLetterAndDigit(value: string): boolean {
+  return /[A-Z]/.test(value) && /\d/.test(value);
+}
+
+function result(text: string, kind: CodeKind, partNumber: string | null, manufacturerHint: string | null, categoryHint: PartCategory | null): ClassifiedCode {
+  return { text, kind, partNumber, manufacturerHint, categoryHint };
+}
+
+export function classifyCode(rawText: string): ClassifiedCode {
+  const text = rawText.trim();
+  const upper = text.toUpperCase();
+
+  if (!text || text.length > 64 || /\s{2,}|^https?:/i.test(text)) return result(text, "unknown", null, null, null);
+
+  const ppidMatch = DELL_PPID.exec(upper);
+  if (ppidMatch && hasLetterAndDigit(ppidMatch[2])) return result(text, "ppid", ppidMatch[2], "Dell", null);
+
+  if (HPE_SPARE_OR_OPTION.test(upper)) return result(text, "partNumber", upper, "HPE", null);
+  if (DELL_PART_NUMBER.test(upper) && hasLetterAndDigit(upper)) return result(text, "partNumber", upper, "Dell", null);
+  if (LENOVO_FRU.test(upper)) return result(text, "partNumber", upper, "Lenovo", null);
+
+  for (const knownPattern of PART_NUMBER_PATTERNS) {
+    if (knownPattern.pattern.test(upper)) return result(text, "partNumber", upper, knownPattern.manufacturer, knownPattern.category);
+  }
+
+  if (MAC_WITH_SEPARATORS.test(upper)) return result(text, "macAddress", null, null, "NIC");
+  if (WWN.test(upper)) return result(text, "wwn", null, null, null);
+  if (UPC_OR_EAN.test(upper)) return result(text, "upc", upper, null, null);
+  if (BARE_HEX_12.test(upper) && /[A-F]/.test(upper) && /\d/.test(upper) && !/[G-Z]/.test(upper)) {
+    return result(text, "macAddress", null, null, "NIC");
+  }
+  if (SERIAL_LIKE.test(upper)) return result(text, "serial", null, null, null);
+
+  return result(text, "unknown", null, null, null);
+}
+
+// The serial that identifies one physical unit: a PPID is unique per piece, so it counts as a serial
+export function isUnitSerial(code: ClassifiedCode): boolean {
+  return code.kind === "serial" || code.kind === "ppid";
+}

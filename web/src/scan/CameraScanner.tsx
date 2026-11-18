@@ -1,196 +1,374 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { type ScanRecord, checkScan, COOLDOWN_MS } from "@shared/dedup";
-import { ComponentCard, type LookupResult } from "./ComponentCard";
-
-// WASM binary is served from web/public/zxing_reader.wasm (copied from node_modules at setup)
-const ZXING_WASM_URL = "/zxing_reader.wasm";
-
-type ZxingResult = {
-  text: string;
-  isValid: boolean;
-  position: {
-    topLeft: { x: number; y: number };
-    topRight: { x: number; y: number };
-    bottomLeft: { x: number; y: number };
-    bottomRight: { x: number; y: number };
-  };
-};
-
-// Initialise ZXing WASM once at module level
-let zxingReady = false;
-let zxingReadBarcodesFromImageData: ((imageData: ImageData) => Promise<ZxingResult[]>) | null = null;
-
-async function initZXing() {
-  if (zxingReady) return;
-  const { readBarcodesFromImageData, setZXingModuleOverrides } = await import("zxing-wasm/reader");
-  setZXingModuleOverrides({ locateFile: () => ZXING_WASM_URL });
-  zxingReadBarcodesFromImageData = readBarcodesFromImageData as (imageData: ImageData) => Promise<ZxingResult[]>;
-  zxingReady = true;
-}
-
-export interface ScannedUnit {
-  partType: string;
-  serial: string | null;
-  status: "ok" | "review";
-}
+import { groupCodesIntoLabels, type DecodedCode, type LabelGroup } from "@shared/labelGroup";
+import { PART_CATEGORIES } from "@shared/partCategory";
+import { isHighValue } from "@shared/recommend";
+import {
+  formatPrice, postJson, type CloseupResponse, type NewUnitRequest, type SessionInfo, type SessionSummary, type SweepPartView, type SweepResponse, type UnitView,
+} from "../api";
+import { ComponentCard } from "./ComponentCard";
+import { captureStill, frameSignature, signatureDifference } from "./capture";
+import { decodeFrame, initZxing } from "./zxing";
 
 interface ScanFeedback {
   text: string;
-  kind: "new" | "duplicate" | "cooldown" | "review";
+  kind: "new" | "duplicate" | "cooldown" | "review" | "error";
 }
 
 interface CameraScannerProps {
-  sessionId: string;
-  onUnit: (unit: ScannedUnit) => void;
-  feedMode?: string; // ?feed= value in dev builds
+  session: SessionInfo;
+  onUnit: (unit: UnitView) => void;
+  onSessionUpdate: (summary: SessionSummary) => void;
+  feedMode?: string;
 }
 
-const PART_TYPES = ["HDD", "SSD", "PSU", "DIMM", "GPU", "NIC", "OTHER"];
+const PART_TYPES = ["AUTO", ...PART_CATEGORIES];
+const FRAME_INTERVAL_MS = 120;
+// Signature differences (0 to 255) that mean "holding still" and "moved to a new view"
+const STEADY_DIFFERENCE = 4;
+const MOVED_DIFFERENCE = 18;
+const STEADY_BEFORE_SWEEP_MS = 1_200;
+const MIN_MS_BETWEEN_AUTO_SWEEPS = 10_000;
+const MOCK_FIXTURES = ["default", "unreadable", "invented"];
 
-export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProps) {
+function vibrate(pattern: number | number[]): void {
+  if ("vibrate" in navigator) navigator.vibrate(pattern);
+}
+
+function partTag(part: SweepPartView): string {
+  const name = part.partNumber ?? part.familyGuess ?? part.category;
+  const value = part.lookup ? ` · $${part.lookup.priceMax}` : "";
+  return `${part.category} ${name}${value}`;
+}
+
+function partColor(part: SweepPartView): string {
+  if (part.unitId || (part.partNumber && part.lookup)) return "#2f9d5f";
+  if (part.needsCloseUp || !part.partNumber) return "#e0ab52";
+  return "#9aa7ae";
+}
+
+export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const scanRef = useRef<number | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
   const recentScansRef = useRef<ScanRecord[]>([]);
-  const [partType, setPartType] = useState("HDD");
+  const sweepPartsRef = useRef<SweepPartView[]>([]);
+  const busyRef = useRef(false);
+  const autoSweepRef = useRef(false);
+  const feedbackTimerRef = useRef<number | null>(null);
+
+  const [partType, setPartType] = useState("AUTO");
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [fakeScanInput, setFakeScanInput] = useState("");
-  const [lookupResult, setLookupResult] = useState<{ result: LookupResult; serial: string } | null>(null);
+  const [mockFixture, setMockFixture] = useState("default");
+  const [lastUnit, setLastUnit] = useState<UnitView | null>(null);
+  const [sweepParts, setSweepParts] = useState<SweepPartView[]>([]);
+  const [closeupHint, setCloseupHint] = useState<string | null>(null);
+  const [pendingRepeat, setPendingRepeat] = useState<LabelGroup | null>(null);
+  const [busy, setBusy] = useState<"sweep" | "closeup" | null>(null);
+  const [autoSweep, setAutoSweep] = useState(false);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+
+  const isFeedMode = feedMode !== undefined && import.meta.env.DEV;
+
+  useEffect(() => { autoSweepRef.current = autoSweep; }, [autoSweep]);
+  useEffect(() => { sweepPartsRef.current = sweepParts; }, [sweepParts]);
 
   const showFeedback = useCallback((text: string, kind: ScanFeedback["kind"]) => {
     setFeedback({ text, kind });
-    setTimeout(() => setFeedback(null), 2_500);
+    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = window.setTimeout(() => setFeedback(null), 3_000);
   }, []);
 
-  const runLookup = useCallback((serial: string) => {
-    fetch(`/api/lookup?q=${encodeURIComponent(serial)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data) setLookupResult({ result: data as LookupResult, serial }); })
-      .catch(() => { /* lookup is best-effort, never block the scan flow */ });
-  }, []);
-
-  const processSerial = useCallback(async (serial: string | null) => {
-    const now = Date.now();
-    const normalised = serial?.trim() || null;
-
-    if (normalised) {
-      const outcome = checkScan(recentScansRef.current, normalised, now, COOLDOWN_MS);
-      if (outcome === "cooldown") return;
-      if (outcome === "duplicate") {
-        showFeedback("Already recorded", "duplicate");
-        return;
-      }
-      recentScansRef.current = [...recentScansRef.current, { serial: normalised, scannedAt: now }];
+  const announceUnit = useCallback((unit: UnitView, duplicate: boolean) => {
+    if (duplicate) {
+      vibrate(20);
+      showFeedback("Already recorded", "duplicate");
+      return;
     }
-
-    const response = await fetch(`/api/sessions/${sessionId}/units`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ partType, serial: normalised }),
-    });
-    if (!response.ok) return;
-    const unit = await response.json() as ScannedUnit;
     onUnit(unit);
-
-    if (unit.status === "review") {
-      showFeedback(`Review: ${partType} (no serial)`, "review");
+    setLastUnit(unit);
+    const value = unit.priceMax !== null ? ` · ${formatPrice(unit.priceMin, unit.priceMax)}` : "";
+    if (isHighValue(unit.priceMax)) {
+      vibrate([80, 60, 80]);
+      showFeedback(`High value: ${unit.description ?? unit.partType}${value}`, "new");
+    } else if (unit.status === "review") {
+      vibrate(60);
+      showFeedback(`Review: ${unit.partType} (no serial)${unit.partNumber ? ` ${unit.partNumber}` : ""}`, "review");
     } else {
-      showFeedback(`Recorded: ${partType} ${normalised ?? ""}`, "new");
-      // Fire eBay lookup non-blocking — no serial means nothing to look up
-      if (normalised) runLookup(normalised);
+      vibrate(60);
+      showFeedback(`Recorded: ${unit.partType} ${unit.serial ?? ""}${value}`, "new");
     }
-  }, [sessionId, partType, onUnit, showFeedback, runLookup]);
+  }, [onUnit, showFeedback]);
 
-  // Camera scanning loop (skipped in feed mode)
+  const saveUnit = useCallback(async (request: NewUnitRequest) => {
+    try {
+      const unit = await postJson<UnitView>(`/api/sessions/${session.id}/units`, request);
+      announceUnit(unit, unit.duplicate === true);
+    } catch (saveError) {
+      showFeedback(saveError instanceof Error ? saveError.message : "Could not save", "error");
+    }
+  }, [session.id, announceUnit, showFeedback]);
+
+  const labelRequest = useCallback((label: LabelGroup): NewUnitRequest => ({
+    partType: partType !== "AUTO" ? partType : label.categoryHint ?? "AUTO",
+    serial: label.serial,
+    partNumber: label.partNumber,
+    manufacturer: label.manufacturerHint,
+    identifiedBy: "barcode",
+    evidence: label.codes.map((code) => code.text).join(" | "),
+  }), [partType]);
+
+  // A label with a serial is one unit; a part-number-only label asks before adding a second identical part
+  const processLabel = useCallback(async (label: LabelGroup) => {
+    const scanKey = label.serial ?? (label.partNumber ? `part:${label.partNumber}` : null);
+    if (!scanKey) return;
+    const now = Date.now();
+    const outcome = checkScan(recentScansRef.current, scanKey, now, COOLDOWN_MS);
+    if (outcome === "cooldown") return;
+    if (outcome === "duplicate") {
+      recentScansRef.current = [...recentScansRef.current.filter((record) => record.serial !== scanKey), { serial: scanKey, scannedAt: now }];
+      if (label.serial) {
+        showFeedback("Already recorded", "duplicate");
+      } else {
+        setPendingRepeat(label);
+      }
+      return;
+    }
+    recentScansRef.current = [...recentScansRef.current, { serial: scanKey, scannedAt: now }];
+    await saveUnit(labelRequest(label));
+  }, [labelRequest, saveUnit, showFeedback]);
+
+  const runSweep = useCallback(async () => {
+    if (busyRef.current) return;
+    const still = isFeedMode ? null : videoRef.current ? captureStill(videoRef.current) : null;
+    if (!isFeedMode && !still) return;
+    busyRef.current = true;
+    setBusy("sweep");
+    try {
+      const sweep = await postJson<SweepResponse>(`/api/sessions/${session.id}/vision/sweep`, {
+        image: still?.base64, mediaType: still?.mediaType, fixture: isFeedMode ? mockFixture : undefined,
+      });
+      setSweepParts(sweep.parts);
+      onSessionUpdate(sweep.session);
+      const newlyAdded = sweep.parts.filter((part) => part.unitId && !part.duplicate);
+      const closeupCount = sweep.parts.filter((part) => !part.unitId && (part.needsCloseUp || !part.partNumber)).length;
+      for (const part of newlyAdded) {
+        const unit = sweep.session.units.find((sessionUnit) => sessionUnit.id === part.unitId);
+        if (unit) onUnit(unit);
+      }
+      if (sweep.parts.some((part) => isHighValue(part.lookup?.priceMax ?? null))) vibrate([80, 60, 80]);
+      showFeedback(`Sweep: ${sweep.parts.length} parts seen, ${newlyAdded.length} recorded, ${closeupCount} need a close-up`, closeupCount ? "review" : "new");
+    } catch (sweepError) {
+      showFeedback(sweepError instanceof Error ? sweepError.message : "Sweep failed", "error");
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }, [isFeedMode, mockFixture, session.id, onSessionUpdate, onUnit, showFeedback]);
+
+  const runCloseup = useCallback(async () => {
+    if (busyRef.current) return;
+    const still = isFeedMode ? null : videoRef.current ? captureStill(videoRef.current) : null;
+    if (!isFeedMode && !still) return;
+    busyRef.current = true;
+    setBusy("closeup");
+    try {
+      const closeup = await postJson<CloseupResponse>(`/api/sessions/${session.id}/vision/closeup`, {
+        image: still?.base64, mediaType: still?.mediaType, categoryHint: closeupHint ?? (partType !== "AUTO" ? partType : undefined),
+        fixture: isFeedMode ? mockFixture : undefined,
+      });
+      onSessionUpdate(closeup.session);
+      announceUnit(closeup.unit, closeup.duplicate);
+      setCloseupHint(null);
+    } catch (closeupError) {
+      showFeedback(closeupError instanceof Error ? closeupError.message : "Label read failed", "error");
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }, [isFeedMode, mockFixture, session.id, closeupHint, partType, onSessionUpdate, announceUnit, showFeedback]);
+
+  // Latest callbacks for the frame loop, which lives outside React's render cycle
+  const processLabelRef = useRef(processLabel);
+  const runSweepRef = useRef(runSweep);
+  useEffect(() => { processLabelRef.current = processLabel; }, [processLabel]);
+  useEffect(() => { runSweepRef.current = runSweep; }, [runSweep]);
+
   useEffect(() => {
     if (feedMode !== undefined) return;
     let stream: MediaStream | null = null;
+    let stopped = false;
+    let timer: number | null = null;
+    const workCanvas = document.createElement("canvas");
+    const signatureCanvas = document.createElement("canvas");
+    let previousSignature: Uint8ClampedArray | null = null;
+    let steadySince: number | null = null;
+    let movedSinceSweep = true;
+    let lastAutoSweepAt = 0;
+
+    function drawOverlay(codes: DecodedCode[], width: number, height: number) {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      overlay.width = width;
+      overlay.height = height;
+      const context = overlay.getContext("2d")!;
+      context.clearRect(0, 0, width, height);
+      context.lineWidth = Math.max(3, width / 300);
+      context.font = `600 ${Math.max(16, width / 45)}px system-ui, sans-serif`;
+      for (const part of sweepPartsRef.current) {
+        const left = part.box.x * width;
+        const top = part.box.y * height;
+        const color = partColor(part);
+        context.strokeStyle = color;
+        context.strokeRect(left, top, part.box.width * width, part.box.height * height);
+        const tag = partTag(part);
+        const tagHeight = Math.max(22, width / 36);
+        context.fillStyle = color;
+        context.fillRect(left, Math.max(0, top - tagHeight), context.measureText(tag).width + 12, tagHeight);
+        context.fillStyle = "#0b1114";
+        context.fillText(tag, left + 6, Math.max(tagHeight - 6, top - 6));
+      }
+      context.strokeStyle = "#4cc3d6";
+      for (const code of codes) context.strokeRect(code.box.x, code.box.y, code.box.width, code.box.height);
+    }
+
+    async function processFrame() {
+      const video = videoRef.current;
+      if (stopped) return;
+      if (video && video.videoWidth > 0) {
+        const { videoWidth: width, videoHeight: height } = video;
+        workCanvas.width = width;
+        workCanvas.height = height;
+        const context = workCanvas.getContext("2d", { willReadFrequently: true })!;
+        context.drawImage(video, 0, 0, width, height);
+        const codes = await decodeFrame(context.getImageData(0, 0, width, height)).catch(() => [] as DecodedCode[]);
+
+        const signature = frameSignature(workCanvas, signatureCanvas);
+        const difference = signatureDifference(previousSignature, signature);
+        previousSignature = signature;
+        const now = Date.now();
+        if (difference > MOVED_DIFFERENCE) {
+          movedSinceSweep = true;
+          steadySince = null;
+          if (sweepPartsRef.current.length) setSweepParts([]);
+        } else if (difference < STEADY_DIFFERENCE) {
+          steadySince ??= now;
+        }
+        if (autoSweepRef.current && movedSinceSweep && steadySince !== null && now - steadySince >= STEADY_BEFORE_SWEEP_MS
+          && now - lastAutoSweepAt >= MIN_MS_BETWEEN_AUTO_SWEEPS && !busyRef.current) {
+          movedSinceSweep = false;
+          lastAutoSweepAt = now;
+          void runSweepRef.current();
+        }
+
+        drawOverlay(codes, width, height);
+        for (const label of groupCodesIntoLabels(codes)) await processLabelRef.current(label);
+      }
+      timer = window.setTimeout(() => void processFrame(), FRAME_INTERVAL_MS);
+    }
 
     async function start() {
       try {
-        await initZXing();
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        await initZxing();
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        });
+        if (stopped) return;
         const video = videoRef.current;
         if (!video) return;
         video.srcObject = stream;
         await video.play();
-        scheduleFrame();
+        const track = stream.getVideoTracks()[0];
+        trackRef.current = track;
+        const capabilities = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean };
+        setTorchAvailable(Boolean(capabilities.torch));
+        void processFrame();
       } catch {
         setCameraError("Camera unavailable. Grant camera permission and reload.");
       }
     }
 
-    function scheduleFrame() {
-      scanRef.current = requestAnimationFrame(decodeFrame);
-    }
-
-    async function decodeFrame() {
-      const video = videoRef.current;
-      const overlay = overlayRef.current;
-      if (!video || !overlay || !zxingReadBarcodesFromImageData) {
-        scheduleFrame();
-        return;
-      }
-
-      const { videoWidth: width, videoHeight: height } = video;
-      if (width === 0 || height === 0) {
-        scheduleFrame();
-        return;
-      }
-
-      overlay.width = width;
-      overlay.height = height;
-      const ctx = overlay.getContext("2d")!;
-      ctx.drawImage(video, 0, 0, width, height);
-      const imageData = ctx.getImageData(0, 0, width, height);
-
-      const results = await zxingReadBarcodesFromImageData(imageData);
-      ctx.clearRect(0, 0, width, height);
-
-      for (const result of results) {
-        if (!result.isValid) continue;
-        const { topLeft, topRight, bottomRight, bottomLeft } = result.position;
-        ctx.beginPath();
-        ctx.moveTo(topLeft.x, topLeft.y);
-        ctx.lineTo(topRight.x, topRight.y);
-        ctx.lineTo(bottomRight.x, bottomRight.y);
-        ctx.lineTo(bottomLeft.x, bottomLeft.y);
-        ctx.closePath();
-        ctx.strokeStyle = "#4cc3d6";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-
-        await processSerial(result.text);
-      }
-
-      // Throttle to ~10 fps for battery
-      setTimeout(scheduleFrame, 100);
-    }
-
     void start();
-
     return () => {
-      if (scanRef.current !== null) cancelAnimationFrame(scanRef.current);
+      stopped = true;
+      if (timer !== null) window.clearTimeout(timer);
       stream?.getTracks().forEach((track) => track.stop());
+      trackRef.current = null;
     };
-  }, [feedMode, processSerial]);
+  }, [feedMode]);
 
-  async function handleFakeScan(event: React.FormEvent) {
-    event.preventDefault();
-    // Empty string → no-serial (review) scan
-    await processSerial(fakeScanInput || null);
-    setFakeScanInput("");
+  async function toggleTorch() {
+    const track = trackRef.current;
+    if (!track) return;
+    const next = !torchOn;
+    await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] }).catch(() => undefined);
+    setTorchOn(next);
   }
 
-  const isDev = import.meta.env.DEV;
+  function startCloseup(part: SweepPartView) {
+    setCloseupHint(part.category);
+    showFeedback(`Close-up: point at the ${part.category} label, then tap Read label`, "review");
+  }
+
+  // Tapping a box on the camera view picks the smallest detected part under the finger
+  function handleCameraTap(event: MouseEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const tapX = (event.clientX - bounds.left) / bounds.width;
+    const tapY = (event.clientY - bounds.top) / bounds.height;
+    const tapped = sweepParts
+      .filter((part) => tapX >= part.box.x && tapX <= part.box.x + part.box.width && tapY >= part.box.y && tapY <= part.box.y + part.box.height)
+      .sort((first, second) => first.box.width * first.box.height - second.box.width * second.box.height)[0];
+    if (tapped) startCloseup(tapped);
+  }
+
+  async function addSweptPart(part: SweepPartView) {
+    await saveUnit({
+      partType: part.category,
+      serial: part.serial,
+      partNumber: part.partNumber,
+      manufacturer: part.manufacturer,
+      description: part.familyGuess,
+      identifiedBy: part.partNumber ? "label-read" : "visual",
+      partNumberRead: Boolean(part.partNumber),
+      evidence: part.printedText.filter((printed) => printed.readFromImage).map((printed) => printed.text).join(" | ") || part.familyGuess,
+    });
+  }
+
+  async function confirmRepeat() {
+    if (!pendingRepeat) return;
+    const label = pendingRepeat;
+    setPendingRepeat(null);
+    await saveUnit(labelRequest(label));
+  }
+
+  async function handleFakeScan(event: FormEvent) {
+    event.preventDefault();
+    const text = fakeScanInput.trim();
+    setFakeScanInput("");
+    if (!text) {
+      await saveUnit({ partType: partType !== "AUTO" ? partType : "OTHER", serial: null, identifiedBy: "barcode" });
+      return;
+    }
+    // Codes separated by | are treated as stacked on one label
+    const codes = text.split(/\s*\|\s*/).map((codeText, index) => ({ text: codeText, box: { x: 0, y: index * 30, width: 200, height: 24 } }));
+    const labels = groupCodesIntoLabels(codes);
+    if (!labels.length) {
+      showFeedback(`Not a part number or serial: ${text}`, "error");
+      return;
+    }
+    for (const label of labels) await processLabel(label);
+  }
 
   return (
     <main className="screen screen-scan">
       <a href="/" className="back">← Home</a>
       <h1>Scanning</h1>
+      <p className="session-line" data-testid="session-line">{session.assetTag} · {session.model}</p>
 
-      <div className="part-type-row">
+      <div className="part-type-row" aria-label="Part type override">
         {PART_TYPES.map((type) => (
           <button
             key={type}
@@ -198,32 +376,36 @@ export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProp
             onClick={() => setPartType(type)}
             data-testid={`part-type-${type}`}
           >
-            {type}
+            {type === "AUTO" ? "Auto" : type}
           </button>
         ))}
       </div>
 
-      {feedMode !== undefined && isDev ? (
+      {isFeedMode ? (
         <div className="feed-mode" data-testid="feed-mode">
-          <p className="muted">Test feed mode — inject barcodes below.</p>
+          <p className="muted">Test feed mode: inject barcodes (separate codes on one label with |) or run a mock vision reading.</p>
           <form className="feed-form" onSubmit={handleFakeScan}>
             <input
               className="field-input"
               type="text"
               value={fakeScanInput}
-              onChange={(e) => setFakeScanInput(e.target.value)}
-              placeholder="Serial or leave blank for no-serial"
+              onChange={(event) => setFakeScanInput(event.target.value)}
+              placeholder="Serial, part number, or blank for no-serial"
               data-testid="fake-scan-input"
             />
-            <button className="btn-primary" type="submit" data-testid="inject-scan-btn">
-              Inject scan
-            </button>
+            <button className="btn-primary" type="submit" data-testid="inject-scan-btn">Inject scan</button>
           </form>
+          <label className="feed-fixture">
+            Mock reading
+            <select className="field-input" value={mockFixture} onChange={(event) => setMockFixture(event.target.value)} data-testid="mock-fixture">
+              {MOCK_FIXTURES.map((fixtureName) => <option key={fixtureName} value={fixtureName}>{fixtureName}</option>)}
+            </select>
+          </label>
         </div>
       ) : (
-        <div className="camera-wrap">
+        <div className="camera-wrap" onClick={handleCameraTap}>
           {cameraError ? (
-            <p className="form-error">{cameraError}</p>
+            <p className="form-error camera-error">{cameraError}</p>
           ) : (
             <>
               <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
@@ -233,17 +415,65 @@ export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProp
         </div>
       )}
 
+      <div className="scan-actions">
+        <button className="btn-primary" onClick={() => void runSweep()} disabled={busy !== null} data-testid="sweep-btn">
+          {busy === "sweep" ? "Analyzing…" : "Analyze view"}
+        </button>
+        <button className="btn-secondary btn-large" onClick={() => void runCloseup()} disabled={busy !== null} data-testid="closeup-btn">
+          {busy === "closeup" ? "Reading…" : closeupHint ? `Read ${closeupHint} label` : "Read label"}
+        </button>
+        {!isFeedMode && (
+          <label className="toggle">
+            <input type="checkbox" checked={autoSweep} onChange={(event) => setAutoSweep(event.target.checked)} data-testid="auto-sweep" />
+            Auto-analyze when steady
+          </label>
+        )}
+        {torchAvailable && (
+          <button className="btn-secondary" onClick={() => void toggleTorch()} data-testid="torch-btn">{torchOn ? "Torch off" : "Torch on"}</button>
+        )}
+      </div>
+
       {feedback && (
         <div className={`scan-feedback scan-feedback-${feedback.kind}`} role="status" data-testid="scan-feedback">
           {feedback.text}
         </div>
       )}
 
-      {lookupResult && (
-        <div className="screen" style={{ paddingTop: 0 }}>
-          <ComponentCard result={lookupResult.result} serial={lookupResult.serial} />
+      {pendingRepeat && (
+        <div className="repeat-prompt" data-testid="repeat-prompt">
+          <span>{pendingRepeat.partNumber} again with no serial. Another identical part?</span>
+          <button className="btn-primary" onClick={() => void confirmRepeat()} data-testid="repeat-add-btn">Add another</button>
+          <button className="btn-secondary" onClick={() => setPendingRepeat(null)}>Same part</button>
         </div>
       )}
+
+      {sweepParts.length > 0 && (
+        <section className="sweep-list" data-testid="sweep-list">
+          <h2 className="recent-heading">In view ({sweepParts.length})</h2>
+          <ul className="unit-list">
+            {sweepParts.map((part) => (
+              <li key={part.index} className="unit-row sweep-row" data-testid="sweep-part">
+                <span className="swatch" style={{ background: partColor(part) }} aria-hidden="true" />
+                <span className="unit-type">{part.category}</span>
+                <span className="unit-serial">
+                  {part.partNumber ?? part.familyGuess ?? "unidentified"}
+                  {part.lookup ? ` · $${part.lookup.priceMax}` : ""}
+                </span>
+                {part.unitId ? (
+                  <span className="unit-badge unit-badge-ok">{part.duplicate ? "already" : "added"}</span>
+                ) : (
+                  <span className="row-actions">
+                    <button className="btn-secondary btn-small" onClick={() => startCloseup(part)} data-testid="sweep-closeup-btn">Close-up</button>
+                    <button className="btn-secondary btn-small" onClick={() => void addSweptPart(part)} data-testid="sweep-add-btn">Add</button>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {lastUnit && <ComponentCard unit={lastUnit} />}
     </main>
   );
 }
