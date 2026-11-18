@@ -19,8 +19,8 @@ test("app loads over HTTPS with the server healthy and no console errors", async
 });
 
 for (const route of [
-  { path: "/scan", heading: "Scan" },
-  { path: "/bench", heading: "Bench" },
+  { path: "/scan", heading: "Start Session" },   // /scan shows start-session form (F1)
+  { path: "/bench", heading: "Sessions" },        // /bench shows sessions list (F10)
 ]) {
   test(`${route.path} route renders without console errors`, async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);

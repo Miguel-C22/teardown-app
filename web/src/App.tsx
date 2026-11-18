@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
+import { ScanPage } from "./scan/ScanPage";
+import { BenchPage } from "./bench/BenchPage";
 
 function useServerStatus(): string {
   const [serverStatus, setServerStatus] = useState("checking");
@@ -40,14 +42,12 @@ function Home() {
   );
 }
 
-function Placeholder({ title, detail }: { title: string; detail: string }) {
+function NotFound() {
   return (
     <main className="screen">
-      <Link to="/" className="back">
-        ← Home
-      </Link>
-      <h1>{title}</h1>
-      <p className="muted">{detail}</p>
+      <Link to="/" className="back">← Home</Link>
+      <h1>Not found</h1>
+      <p className="muted">No such screen.</p>
     </main>
   );
 }
@@ -56,9 +56,9 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/scan" element={<Placeholder title="Scan" detail="Camera scanning arrives in F1–F3." />} />
-      <Route path="/bench" element={<Placeholder title="Bench" detail="Live bench list arrives in F7." />} />
-      <Route path="*" element={<Placeholder title="Not found" detail="No such screen." />} />
+      <Route path="/scan" element={<ScanPage />} />
+      <Route path="/bench" element={<BenchPage />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

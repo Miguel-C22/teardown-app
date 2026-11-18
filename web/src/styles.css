@@ -25,3 +25,60 @@ h1 { font-size: 32px; line-height: 1.1; margin: 6px 0 8px; }
 .status-ok { color: var(--keep); }
 .status-unreachable { color: var(--recycle); }
 .back { display: inline-block; margin-bottom: 16px; color: var(--accent); text-decoration: none; }
+
+/* Forms */
+.start-form { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 14px; font-weight: 500; color: var(--fg); }
+.field-input { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); font-size: 16px; outline: none; }
+.field-input:focus { border-color: var(--accent); }
+.form-error { color: var(--recycle); font-size: 14px; margin: 0; }
+.btn-primary { padding: 12px 20px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-secondary { padding: 8px 14px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; font-size: 14px; cursor: pointer; }
+.btn-secondary:hover { border-color: var(--accent); }
+
+/* Part type selector */
+.part-type-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.part-btn { padding: 6px 12px; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 20px; font-size: 13px; cursor: pointer; }
+.part-btn-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Camera */
+.screen-scan { padding-bottom: 0; }
+.camera-wrap { position: relative; width: 100%; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 4/3; }
+.camera-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.camera-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* Feed mode */
+.feed-mode { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.feed-form { display: flex; gap: 8px; margin-top: 12px; }
+.feed-form .field-input { flex: 1; }
+
+/* Scan feedback */
+.scan-feedback { margin-top: 16px; padding: 12px 16px; border-radius: 6px; font-weight: 600; font-size: 15px; }
+.scan-feedback-new { background: color-mix(in srgb, var(--keep) 15%, transparent); color: var(--keep); }
+.scan-feedback-review { background: color-mix(in srgb, var(--review) 15%, transparent); color: var(--review); }
+.scan-feedback-duplicate { background: color-mix(in srgb, var(--muted) 15%, transparent); color: var(--muted); }
+.scan-feedback-cooldown { background: color-mix(in srgb, var(--muted) 10%, transparent); color: var(--muted); }
+
+/* Unit list */
+.recent-units { padding-top: 8px; }
+.recent-heading { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 8px; }
+.unit-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.unit-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.unit-type { font-weight: 600; font-size: 13px; min-width: 48px; }
+.unit-serial { flex: 1; font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.unit-badge-ok { background: color-mix(in srgb, var(--keep) 15%, transparent); color: var(--keep); }
+.unit-badge-review { background: color-mix(in srgb, var(--review) 15%, transparent); color: var(--review); }
+
+/* Session list */
+.session-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.session-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.session-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; gap: 12px; }
+.session-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.session-asset { font-size: 16px; }
+.session-model { font-size: 13px; }
+.session-date { font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+.session-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.session-card .unit-list { padding: 0 16px 12px; }
