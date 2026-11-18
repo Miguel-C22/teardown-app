@@ -1,6 +1,8 @@
 import express, { type Express } from "express";
 import { createSession, getSession, listSessions, addUnit } from "./store.js";
 import { buildCsv } from "../../shared/src/csvExport.js";
+import { lookupPart } from "./ebay.js";
+import { lookupCatalog } from "../../shared/src/catalog.js";
 
 export function createApp(): Express {
   const app = express();
@@ -45,6 +47,34 @@ export function createApp(): Express {
       return;
     }
     response.status(201).json(unit);
+  });
+
+  app.get("/api/lookup", (request, response) => {
+    const query = typeof request.query.q === "string" ? request.query.q.trim() : "";
+    if (!query) { response.status(400).json({ error: "q is required" }); return; }
+
+    function sendResult(result: { name: string; category: string; priceMin: number; priceMax: number; imageUrl?: string | null; confidence: string; listingCount?: number }, source: string) {
+      const recommendation = result.priceMax >= 30 ? "KEEP" : result.priceMax >= 10 ? "REVIEW" : "RECYCLE";
+      response.json({ ...result, recommendation, source });
+    }
+
+    // Try eBay first (if keys configured), fall back to static catalog
+    const hasEbayKeys = !!process.env.EBAY_CLIENT_ID;
+    const ebayPromise = hasEbayKeys ? lookupPart(query) : Promise.resolve(null);
+
+    ebayPromise
+      .then((ebayResult) => {
+        if (ebayResult) { sendResult(ebayResult, "ebay"); return; }
+        // eBay unavailable or no results — try static catalog
+        const catalogEntry = lookupCatalog(query);
+        if (!catalogEntry) { response.status(404).json({ error: "not found" }); return; }
+        sendResult({ ...catalogEntry, imageUrl: null, confidence: "medium", listingCount: 0 }, "catalog");
+      })
+      .catch(() => {
+        const catalogEntry = lookupCatalog(query);
+        if (!catalogEntry) { response.status(503).json({ error: "lookup unavailable" }); return; }
+        sendResult({ ...catalogEntry, imageUrl: null, confidence: "medium", listingCount: 0 }, "catalog");
+      });
   });
 
   app.get("/api/sessions/:id/export.csv", (request, response) => {

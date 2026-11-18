@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { type ScanRecord, checkScan, COOLDOWN_MS } from "@shared/dedup";
+import { ComponentCard, type LookupResult } from "./ComponentCard";
 
 // WASM binary is served from web/public/zxing_reader.wasm (copied from node_modules at setup)
 const ZXING_WASM_URL = "/zxing_reader.wasm";
@@ -55,10 +56,18 @@ export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProp
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [fakeScanInput, setFakeScanInput] = useState("");
+  const [lookupResult, setLookupResult] = useState<{ result: LookupResult; serial: string } | null>(null);
 
   const showFeedback = useCallback((text: string, kind: ScanFeedback["kind"]) => {
     setFeedback({ text, kind });
     setTimeout(() => setFeedback(null), 2_500);
+  }, []);
+
+  const runLookup = useCallback((serial: string) => {
+    fetch(`/api/lookup?q=${encodeURIComponent(serial)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) setLookupResult({ result: data as LookupResult, serial }); })
+      .catch(() => { /* lookup is best-effort, never block the scan flow */ });
   }, []);
 
   const processSerial = useCallback(async (serial: string | null) => {
@@ -83,12 +92,15 @@ export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProp
     if (!response.ok) return;
     const unit = await response.json() as ScannedUnit;
     onUnit(unit);
+
     if (unit.status === "review") {
       showFeedback(`Review: ${partType} (no serial)`, "review");
     } else {
       showFeedback(`Recorded: ${partType} ${normalised ?? ""}`, "new");
+      // Fire eBay lookup non-blocking — no serial means nothing to look up
+      if (normalised) runLookup(normalised);
     }
-  }, [sessionId, partType, onUnit, showFeedback]);
+  }, [sessionId, partType, onUnit, showFeedback, runLookup]);
 
   // Camera scanning loop (skipped in feed mode)
   useEffect(() => {
@@ -224,6 +236,12 @@ export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProp
       {feedback && (
         <div className={`scan-feedback scan-feedback-${feedback.kind}`} role="status" data-testid="scan-feedback">
           {feedback.text}
+        </div>
+      )}
+
+      {lookupResult && (
+        <div className="screen" style={{ paddingTop: 0 }}>
+          <ComponentCard result={lookupResult.result} serial={lookupResult.serial} />
         </div>
       )}
     </main>
