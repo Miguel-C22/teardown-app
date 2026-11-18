@@ -40,14 +40,13 @@ interface ScanFeedback {
 
 interface CameraScannerProps {
   sessionId: string;
-  assetTag: string;
   onUnit: (unit: ScannedUnit) => void;
   feedMode?: string; // ?feed= value in dev builds
 }
 
 const PART_TYPES = ["HDD", "SSD", "PSU", "DIMM", "GPU", "NIC", "OTHER"];
 
-export function CameraScanner({ sessionId, assetTag, onUnit, feedMode }: CameraScannerProps) {
+export function CameraScanner({ sessionId, onUnit, feedMode }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const scanRef = useRef<number | null>(null);
@@ -177,7 +176,6 @@ export function CameraScanner({ sessionId, assetTag, onUnit, feedMode }: CameraS
   return (
     <main className="screen screen-scan">
       <a href="/" className="back">← Home</a>
-      <p className="eyebrow">{assetTag}</p>
       <h1>Scanning</h1>
 
       <div className="part-type-row">
