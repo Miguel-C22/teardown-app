@@ -85,7 +85,7 @@ describe("POST /api/sessions/:id/vision/sweep", () => {
     const response = await request(app).post(`/api/sessions/${sessionId}/vision/sweep`).send({ image: TINY_JPEG_BASE64 });
     expect(response.status).toBe(200);
     expect(response.body.mode).toBe("mock");
-    expect(response.body.parts).toHaveLength(4);
+    expect(response.body.parts).toHaveLength(6);
 
     const [psu, dimm, cpu] = response.body.parts as Array<Record<string, unknown>>;
     expect(psu).toMatchObject({ partNumber: "0HW7NR", serial: "CN0HW7NR7893153P0123A00", duplicate: false });
@@ -207,6 +207,23 @@ describe("a label read in two goes", () => {
 });
 
 describe("parts identified by appearance", () => {
+  it("records a CPU cooler with no label as cooling, priced from the AI estimate", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    const response = await request(app).post(`/api/sessions/${sessionId}/vision/closeup`).send({ image: TINY_JPEG_BASE64, fixture: "cooler" });
+    expect(response.body.unit).toMatchObject({
+      partType: "COOLING", manufacturer: "SilverStone", description: "SilverStone XE02-SP5B 2U SP5 CPU cooler",
+      priceMin: 40, priceMax: 70, lookupSource: "ai-estimate", verified: false, recommendation: "REVIEW",
+    });
+  });
+
+  it("counts coolers and fans in the what's-left checklist", async () => {
+    const app = createApp();
+    const sessionId = await startSession(app);
+    const response = await request(app).post(`/api/sessions/${sessionId}/vision/sweep`).send({ image: TINY_JPEG_BASE64 });
+    expect(response.body.session.remaining).toEqual(expect.arrayContaining([{ category: "COOLING", expected: 8, found: 0 }]));
+  });
+
   it("prices an unreadable part from the AI's estimate and keeps it in review", async () => {
     const app = createApp();
     const sessionId = await startSession(app);

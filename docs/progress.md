@@ -19,6 +19,12 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 
 ## Checkpoint notes
 
+### Every component, and results that stay on screen — 2026-11-18
+- Analyze view now lists every removable component, valuable or not. New groups: COOLING (coolers, heatsinks, fans), BOARD (motherboard, risers, backplanes, mezzanine, BMC modules), CHASSIS (rails, bezels, caddies). OTHER covers the rest. Only empty slots and loose screws are skipped.
+- A CPU under its cooler counts as a CPU and a COOLING part. Close-ups identify unlabelled parts from logo, shape, fins and heat pipes, connectors and socket.
+- Result cards (picture, price, recommendation) all stay on screen, newest first, with a Clear button that only clears the screen.
+- `npm test`: 110/110. `npm run e2e`: 68/68. Typecheck clean, build ok. Live AI and real phone: **not checked**.
+
 ### Parts with no sticker, and drive labels — 2026-11-18
 - Vision now returns `searchQuery` (most specific product name) and `estimatedPriceUsd` per part. Parts with no readable part number are priced by eBay search on that name (`ebay-description`), else the AI's range (`ai-estimate`). Both are labelled on screen and can never verify a part (`server/src/identify.ts`).
 - Units carry `imageUrl` (eBay listing photo or a generic part-type picture), shown when the tech's own photo isn't kept (always on Vercel).

@@ -50,12 +50,35 @@
       "needsCloseUp": true,
       "searchQuery": "Dell PERC H730P Mini Mono",
       "estimatedPriceUsd": { "low": 25, "high": 60 }
+    },
+    {
+      "category": "COOLING",
+      "box": { "x": 0.40, "y": 0.55, "width": 0.20, "height": 0.18 },
+      "manufacturer": "Dell",
+      "familyGuess": "2U CPU heatsink",
+      "printedText": [],
+      "confidence": "medium",
+      "needsCloseUp": false,
+      "searchQuery": "Dell R740 standard CPU heatsink",
+      "estimatedPriceUsd": { "low": 15, "high": 35 }
+    },
+    {
+      "category": "COOLING",
+      "box": { "x": 0.05, "y": 0.05, "width": 0.60, "height": 0.10 },
+      "manufacturer": "Dell",
+      "familyGuess": "hot-swap fan module",
+      "printedText": [],
+      "confidence": "medium",
+      "needsCloseUp": false,
+      "searchQuery": "Dell R740 hot swap fan",
+      "estimatedPriceUsd": { "low": 8, "high": 20 }
     }
   ],
   "countsByCategory": [
     { "category": "PSU", "count": 2 },
     { "category": "DIMM", "count": 12 },
     { "category": "CPU", "count": 2 },
-    { "category": "RAID", "count": 1 }
+    { "category": "RAID", "count": 1 },
+    { "category": "COOLING", "count": 8 }
   ]
 }

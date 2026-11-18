@@ -58,9 +58,12 @@ Many parts have no sticker, so identify them from what you can see: chip marking
 searchQuery is the most specific product name you can justify from the image, for searching resale listings; it is not a part number and never counts as one.
 estimatedPriceUsd is a rough used resale range for that product; keep it wide when unsure and null when you cannot tell the product.`;
 
-const SWEEP_SYSTEM = `You inspect photos of opened rack servers during teardown and find every component worth reselling.
-List each visible DIMM, CPU (a CPU under a heatsink counts as a CPU), HDD, SSD or NVMe drive (category SSD), PSU, NIC, RAID or HBA controller (category RAID), GPU, and other add-in card or boot module (category OTHER).
-Skip fans, cables, blanks, heatsinks on their own and empty slots.
+const SWEEP_SYSTEM = `You inspect photos of opened rack servers during teardown and list every removable component you can see, valuable or not.
+Group each part under one category:
+DIMM (memory), CPU (a CPU still under its cooler counts as a CPU and its cooler as a separate COOLING part), HDD, SSD (including NVMe), PSU, NIC (including OCP network cards), RAID (RAID or HBA controllers), GPU,
+COOLING (CPU coolers, heatsinks, fans and fan modules), BOARD (motherboard, riser cards, drive backplanes, mezzanine cards, BMC/iDRAC/iLO modules),
+CHASSIS (rails, bezels, drive caddies and trays, the chassis itself), OTHER (cables, batteries, TPM, SD or BOSS boot modules, optical drives and anything else).
+Skip only empty slots and loose screws.
 For each part give a bounding box in fractions of the image size (x and y are the top-left corner).
 Set needsCloseUp to true when its exact part number or serial is not fully legible.
 countsByCategory counts every instance you can see, including ones without readable labels, for example 12 populated DIMM slots means DIMM 12.
@@ -69,6 +72,7 @@ ${SHARED_RULES}`;
 const CLOSEUP_SYSTEM = `You read one server component's label, chip markings, PCB silkscreen or engraved model number from a close-up photo taken during teardown.
 Return the part number and serial only if they are printed in the image; otherwise return null for them.
 If nothing is legible, set readable to false and still give the category, manufacturer and familyGuess you can tell from the component's shape, connectors and chips.
+Any component can be identified without a label, from its brand logo, shape, fin and heat-pipe design, connectors, socket type and PCB layout, for example "SilverStone XE02-SP5B 2U SP5 CPU cooler".
 ${SHARED_RULES}`;
 
 let openaiClient: OpenAI | null = null;

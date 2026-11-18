@@ -31,7 +31,7 @@ const STEADY_DIFFERENCE = 4;
 const MOVED_DIFFERENCE = 18;
 const STEADY_BEFORE_SWEEP_MS = 1_200;
 const MIN_MS_BETWEEN_AUTO_SWEEPS = 10_000;
-const MOCK_FIXTURES = ["default", "unreadable", "invented"];
+const MOCK_FIXTURES = ["default", "unreadable", "invented", "cooler"];
 
 function vibrate(pattern: number | number[]): void {
   if ("vibrate" in navigator) navigator.vibrate(pattern);
@@ -82,7 +82,8 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [fakeScanInput, setFakeScanInput] = useState("");
   const [mockFixture, setMockFixture] = useState("default");
-  const [lastUnit, setLastUnit] = useState<UnitView | null>(null);
+  // Every part found stays on screen, newest first, until the tech taps Clear
+  const [resultCards, setResultCards] = useState<UnitView[]>([]);
   const [sweepParts, setSweepParts] = useState<SweepPartView[]>([]);
   // Boxes stop lining up once the camera moves, so they hide but the found-parts list stays
   const [boxesStale, setBoxesStale] = useState(false);
@@ -112,7 +113,10 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
       return;
     }
     onUnit(unit);
-    setLastUnit(unit);
+    // A unit filled in later keeps its id, so its card is updated in place
+    setResultCards((previous) => (previous.some((card) => card.id === unit.id)
+      ? previous.map((card) => (card.id === unit.id ? unit : card))
+      : [unit, ...previous]));
     const value = unit.priceMax !== null ? ` · ${formatPrice(unit.priceMin, unit.priceMax)}` : "";
     if (unit.filledIn) {
       vibrate(60);
@@ -518,7 +522,15 @@ export function CameraScanner({ session, onUnit, onSessionUpdate, feedMode, mode
         </div>
       )}
 
-      {lastUnit && <ComponentCard unit={lastUnit} />}
+      {resultCards.length > 0 && (
+        <section className="result-cards" data-testid="result-cards">
+          <div className="result-cards-header">
+            <h2 className="recent-heading">Results ({resultCards.length})</h2>
+            <button type="button" className="btn-secondary btn-small" onClick={() => setResultCards([])} data-testid="clear-results-btn">Clear</button>
+          </div>
+          {resultCards.map((card) => <ComponentCard key={card.id} unit={card} />)}
+        </section>
+      )}
     </main>
   );
 }

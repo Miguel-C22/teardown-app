@@ -12,6 +12,9 @@ const PART_TYPE_ARTICLE: Record<string, string> = {
   NIC: "Network_interface_controller",
   CPU: "Central_processing_unit",
   RAID: "Disk_array_controller",
+  COOLING: "Heat_sink",
+  BOARD: "Motherboard",
+  CHASSIS: "19-inch_rack",
 };
 
 const cache = new Map<string, string | null>();
