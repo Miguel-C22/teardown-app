@@ -37,11 +37,12 @@ const FRAME_INTERVAL_MS = 120;
 // Signature differences (0 to 255) that mean "holding still" and "moved to a new view"
 const STEADY_DIFFERENCE = 4;
 const MOVED_DIFFERENCE = 18;
-// Sticker text is read by itself once the phone holds still on a view where no barcode was just read
-const STEADY_BEFORE_OCR_MS = 1_000;
-const QUIET_AFTER_BARCODE_MS = 1_500;
-const MIN_MS_BETWEEN_OCR = 2_500;
-// Two empty text reads of the same view mean the free steps can't read it, so Find with AI is suggested
+// Sticker text is read in the background every couple of seconds while the phone moves, skipping only fast sweeps (too blurry)
+const MIN_MS_BETWEEN_OCR = 2_000;
+const QUIET_AFTER_BARCODE_MS = 1_000;
+// Signature difference above which the frame is too blurred to read text
+const TOO_FAST_FOR_TEXT = 30;
+// Two empty text reads while held still on one spot mean the free steps can't read it, so Find with AI is suggested
 const EMPTY_OCR_READS_BEFORE_AI_HINT = 2;
 // Sticker text has to read the same way twice; OCR runs every few seconds, so its window is longer than for barcodes
 const OCR_CONFIRM_WINDOW_MS = 12_000;
@@ -52,11 +53,10 @@ const RAW_CODES_SHOWN = 12;
 const PENDING_RETRY_MS = 5_000;
 
 const GUIDANCE = {
-  point: "Point at a label and hold still",
-  hold: "Hold still…",
-  reading: "Reading sticker…",
-  checking: "Checking the sticker again to be sure…",
-  unreadable: "Couldn't read this. Move closer or add light, or use Find with AI",
+  point: "Move over the parts. Barcodes and labels are read as you go",
+  reading: "Move over the parts. Reading label text…",
+  checking: "Found label text, checking it once more…",
+  unreadable: "Couldn't read this spot. Move closer or add light, or use Find with AI",
 } as const;
 
 interface RawCode {
@@ -328,11 +328,11 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
     let steadySince: number | null = null;
     let emptyFastPasses = 0;
     let lastBarcodeAt = 0;
-    // Automatic sticker reading for the current view
+    // Background sticker reading; a spot held still that reads empty twice is left alone until the phone moves
     let ocrRunning = false;
     let lastOcrAt = 0;
-    let viewOcrDone = false;
-    let emptyOcrReads = 0;
+    let spotGivenUp = false;
+    let emptyReadsHeldStill = 0;
 
     function drawOverlay(codes: DecodedCode[], width: number, height: number) {
       const overlay = overlayRef.current;
@@ -346,26 +346,28 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
       for (const code of codes) context.strokeRect(code.box.x, code.box.y, code.box.width, code.box.height);
     }
 
-    // Tier 1 without a tap: read the sticker text of a still view that has no barcode
-    function readStickerAutomatically(video: HTMLVideoElement) {
+    // Tier 1 without a tap: read the label text in view in the background, while the phone keeps moving
+    function readStickerAutomatically(video: HTMLVideoElement, heldStill: boolean) {
       ocrRunning = true;
       lastOcrAt = Date.now();
       updateGuidance(GUIDANCE.reading);
-      void readText(captureRegion(video, centreRegion(video)))
+      void readText(captureRegion(video, centreRegion(video, 0.85)))
         .then((text) => handleOcrTextRef.current(text, true))
         .then((outcome) => {
           if (outcome === "recorded") {
-            viewOcrDone = true;
+            emptyReadsHeldStill = 0;
             updateGuidance(GUIDANCE.point);
           } else if (outcome === "checking") {
             updateGuidance(GUIDANCE.checking);
-          } else {
-            emptyOcrReads += 1;
-            if (emptyOcrReads >= EMPTY_OCR_READS_BEFORE_AI_HINT) {
-              viewOcrDone = true;
+          } else if (heldStill) {
+            emptyReadsHeldStill += 1;
+            if (emptyReadsHeldStill >= EMPTY_OCR_READS_BEFORE_AI_HINT) {
+              spotGivenUp = true;
               setAiSuggested(true);
               updateGuidance(GUIDANCE.unreadable);
             }
+          } else {
+            updateGuidance(GUIDANCE.point);
           }
         })
         .catch(() => updateGuidance(GUIDANCE.point))
@@ -389,21 +391,20 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
         previousSignature = signature;
         const now = Date.now();
         if (difference > MOVED_DIFFERENCE) {
-          // A new view: its sticker hasn't been read yet
+          // A new spot: anything given up on before gets another chance
           steadySince = null;
-          viewOcrDone = false;
-          emptyOcrReads = 0;
-          if (!ocrRunning) updateGuidance(GUIDANCE.point);
+          spotGivenUp = false;
+          emptyReadsHeldStill = 0;
+          if (!ocrRunning && guidanceRef.current === GUIDANCE.unreadable) updateGuidance(GUIDANCE.point);
         } else if (difference < STEADY_DIFFERENCE) {
           steadySince ??= now;
         }
         if (codes.length) lastBarcodeAt = now;
 
-        const steadyLongEnough = steadySince !== null && now - steadySince >= STEADY_BEFORE_OCR_MS;
+        // Label text is read in the background while moving; only a very fast sweep (blurred) or a barcode just read skips it
         const barcodeJustRead = now - lastBarcodeAt < QUIET_AFTER_BARCODE_MS;
-        if (steadySince !== null && !steadyLongEnough && !viewOcrDone && !barcodeJustRead && !ocrRunning) updateGuidance(GUIDANCE.hold);
-        if (steadyLongEnough && !barcodeJustRead && !viewOcrDone && !ocrRunning && now - lastOcrAt >= MIN_MS_BETWEEN_OCR) {
-          readStickerAutomatically(video);
+        if (difference < TOO_FAST_FOR_TEXT && !barcodeJustRead && !spotGivenUp && !ocrRunning && now - lastOcrAt >= MIN_MS_BETWEEN_OCR) {
+          readStickerAutomatically(video, steadySince !== null);
         }
 
         drawOverlay(codes, width, height);

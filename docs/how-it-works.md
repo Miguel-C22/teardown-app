@@ -4,13 +4,13 @@ A short, plain guide to what the app does today and what costs money.
 
 ## The flow
 
-The free steps run by themselves. You just move the phone over the parts and follow the line under the camera ("Hold still…", "Reading sticker…").
+The free steps run by themselves. Just move the phone over the parts at a normal pace; the line under the camera says what it's doing.
 
 | Step | What happens | Cost |
 |---|---|---|
 | 1. Start | Point the phone at the server's tag. The teardown starts on its own. | Free |
-| 2. Barcodes and QR codes | Read automatically while you move. | Free |
-| 3. Sticker text | Hold still about a second on a label with no barcode, and the phone reads the printed text (P/N, S/N) by itself. | Free |
+| 2. Barcodes and QR codes | Every one in view is read instantly while you move. | Free |
+| 3. Label text | For labels with no barcode, the phone reads the printed text (P/N, S/N) in the background every couple of seconds as you move. Slower than barcodes, and a very fast sweep is too blurry to read. | Free |
 | 4. Name it | The part number is turned into a plain name, e.g. "Samsung 32GB DDR4 RDIMM". | Free |
 | 5. Price it | From the built-in price list (and eBay once a key is added, which is also free). | Free |
 | 6. Still unknown? | Tap **Find with AI**. It turns blue when the free steps couldn't read something, or parts are still missing. | **Paid** |
