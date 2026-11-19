@@ -89,6 +89,14 @@ describe("plain barcodes with a data identifier", () => {
     expect(labels[0]).toMatchObject({ partNumber: "6EP3346-7SB00-3AX0", manufacturerHint: "Siemens", categoryHint: "PSU", serial: null });
   });
 
+  it("reads the same 1P code when it is a square DataMatrix on the faceplate", () => {
+    for (const format of ["DataMatrix", "QRCode"]) {
+      const labels = groupCodesIntoLabels([{ text: "1P6EP3436-8SB00-0AY0+Q8HN", box: box(0, 0), format }]);
+      expect(labels).toHaveLength(1);
+      expect(labels[0]).toMatchObject({ partNumber: "6EP3436-8SB00-0AY0", manufacturerHint: "Siemens", categoryHint: "PSU" });
+    }
+  });
+
   it("reads a 1S barcode as the serial and keeps bare P/S-starting serials untouched", () => {
     expect(parseLinearDataIdentifier("1SZ1E41HH0")).toEqual([{ text: "Z1E41HH0", hint: "serial" }]);
     expect(parseLinearDataIdentifier("S1AB2345")).toBeNull();

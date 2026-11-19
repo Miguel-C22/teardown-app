@@ -90,6 +90,9 @@ export function parseTwoDimensionalPayload(rawText: string): LabelField[] {
   if (keyed.length) return keyed;
 
   const pieces = text.split(/[\r\n;,|\t]+|\s+/).map((piece) => piece.trim()).filter(Boolean);
+  // Square codes on industrial gear often hold "1P<part number>+<extra>" (e.g. Siemens), the same as their plain barcodes
+  const withIdentifiers = pieces.flatMap((piece) => parseLinearDataIdentifier(piece) ?? []);
+  if (withIdentifiers.length) return withIdentifiers;
   // A long single value with no structure is a vendor tracking code, not something we can price or dedupe on
   if (pieces.length === 1 && pieces[0].length > 30) return [];
   return pieces.map((piece) => ({ text: piece.toUpperCase(), hint: null }));

@@ -121,7 +121,9 @@ export function createApp(): Express {
   app.use(requireSignIn);
 
   app.get("/api/health", (_request, response) => {
-    response.json({ status: "ok", app: "teardown-poc", visionMode: visionMode(), storage: storageKind(), time: new Date().toISOString() });
+    // version is the deployed git commit on Vercel, so you can tell whether the latest push is live
+    const version = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+    response.json({ status: "ok", app: "teardown-poc", version, visionMode: visionMode(), storage: storageKind(), time: new Date().toISOString() });
   });
 
   app.get("/api/me", (request, response) => {

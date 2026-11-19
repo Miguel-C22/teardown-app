@@ -40,6 +40,14 @@ test("a Siemens barcode with a 1P prefix is recorded by its part number without 
   await expect(page.locator(".recent-units .unit-type").first()).toHaveText("PSU");
 });
 
+test("the square code on a Siemens faceplate gives the part number", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("fake-scan-input").fill("qr:1P6EP3436-8SB00-0AY0+Q8HN");
+  await page.getByTestId("inject-scan-btn").click();
+  await expect(page.locator(".recent-units .unit-row")).toContainText("6EP3436-8SB00-0AY0");
+  await expect(page.locator(".recent-units .unit-type").first()).toHaveText("PSU");
+});
+
 test("a faceplate with only a product name is recorded by that name, with all its text kept", async ({ page }) => {
   await startSession(page);
   await page.getByTestId("fake-scan-input").fill("ocr:Cisco\\nCatalyst 9300-48P\\nSYST STAT SPD");
