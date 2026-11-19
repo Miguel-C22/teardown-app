@@ -14,7 +14,7 @@ import {
 import { ComponentCard } from "./ComponentCard";
 import { SWEEP_STILL_EDGE, captureStill, frameSignature, signatureDifference } from "./capture";
 import { enqueuePending, flushPending, pendingCount } from "./offlineQueue";
-import { captureRegion, centreRegion, ocrTextToCodes, readText, warmUpOcr } from "./ocr";
+import { captureRegion, centreRegion, nextReadPass, ocrTextToCodes, readText, shouldInvert, warmUpOcr } from "./ocr";
 import { FAST_DECODE_EDGE, decodeFrame, grabFrame, initZxing, scaleCodes } from "./zxing";
 
 interface ScanFeedback {
@@ -42,10 +42,10 @@ const MOVED_DIFFERENCE = 18;
 const MIN_MS_BETWEEN_OCR = 2_000;
 // Signature difference above which the frame is too blurred to read text
 const TOO_FAST_FOR_TEXT = 30;
-// Two empty text reads while held still on one spot mean the free steps can't read it, so Find with AI is suggested
-const EMPTY_OCR_READS_BEFORE_AI_HINT = 2;
-// Sticker text has to read the same way twice; OCR runs every few seconds, so its window is longer than for barcodes
-const OCR_CONFIRM_WINDOW_MS = 12_000;
+// A full turn of empty reads (straight, right, left) while held still on one spot means the free steps can't read it, so Find with AI is suggested
+const EMPTY_OCR_READS_BEFORE_AI_HINT = 3;
+// Text has to read the same way twice; reads cycle through rotations every ~2 s, so the same angle comes round again within this window
+const OCR_CONFIRM_WINDOW_MS = 20_000;
 const MOCK_FIXTURES = ["default", "next-area", "cooler", "unreadable", "invented"];
 // After this many fast passes with nothing found, one slower full-size pass looks for small or far-away barcodes
 const FAST_PASSES_BEFORE_FULL_PASS = 4;
@@ -357,6 +357,8 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
     let emptyFastPasses = 0;
     // Background sticker reading; a spot held still that reads empty twice is left alone until the phone moves
     let ocrRunning = false;
+    // Counts background reads so mixed light/dark views alternate between normal and flipped reading
+    let ocrReadCount = 0;
     let lastOcrAt = 0;
     let spotGivenUp = false;
     let emptyReadsHeldStill = 0;
@@ -378,7 +380,10 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
       ocrRunning = true;
       lastOcrAt = Date.now();
       updateGuidance(GUIDANCE.reading);
-      void readText(captureRegion(video, centreRegion(video, 0.85)))
+      const region = centreRegion(video, 0.85);
+      const pass = nextReadPass(video, region, ocrReadCount);
+      ocrReadCount += 1;
+      void readText(captureRegion(video, region, 1600, pass.invert), pass.rotateRadians)
         .then((text) => handleOcrTextRef.current(text, true))
         .then((outcome) => {
           if (outcome === "recorded") {
@@ -453,7 +458,7 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
         x: Math.max(0, label.box.x - margin), y: Math.max(0, label.box.y - margin),
         width: Math.min(video.videoWidth, label.box.width + margin * 2), height: Math.min(video.videoHeight, label.box.height + margin * 2),
       };
-      void readText(captureRegion(video, region))
+      void readText(captureRegion(video, region, 1600, shouldInvert(video, region)))
         .then((text) => {
           const partNumber = groupCodesIntoLabels(ocrTextToCodes(text)).find((ocrLabel) => ocrLabel.partNumber)?.partNumber;
           // Only a part number that matches a known manufacturer format is trusted from a single read

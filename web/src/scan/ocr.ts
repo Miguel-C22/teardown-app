@@ -28,9 +28,9 @@ export function warmUpOcr(): void {
 export const MIN_WORD_CONFIDENCE = 60;
 
 // Reads all text in the image, judging each word on its own, so QR codes, logos and graphics in view don't throw away the clear words
-export async function readText(image: HTMLCanvasElement): Promise<string> {
+export async function readText(image: HTMLCanvasElement, rotateRadians = 0): Promise<string> {
   const ocrWorker = await getOcrWorker();
-  const result = await ocrWorker.recognize(image, {}, { text: true, blocks: true });
+  const result = await ocrWorker.recognize(image, { rotateRadians }, { text: true, blocks: true });
   const blocks = result.data.blocks;
   if (!blocks) return (result.data.confidence ?? 0) >= MIN_WORD_CONFIDENCE ? result.data.text ?? "" : "";
   const lines: string[] = [];
@@ -57,15 +57,55 @@ export function ocrTextToCodes(text: string, box: PixelBox = { x: 0, y: 0, width
   return extractLabelFields(text).map((field) => ({ text: field.text, box, hint: field.hint }));
 }
 
-// Copies a region of the video (or all of it) to a canvas, enlarged for small text
-export function captureRegion(video: HTMLVideoElement, region: PixelBox | null, targetWidth = 1600): HTMLCanvasElement {
+// Below this average brightness (0–255) a view is a dark faceplate with light printing; between the two it is mixed
+const DARK_VIEW_BRIGHTNESS = 100;
+const LIGHT_VIEW_BRIGHTNESS = 150;
+
+// Average brightness of a region, sampled small so it costs almost nothing
+function averageBrightness(video: HTMLVideoElement, source: PixelBox): number {
+  const sample = document.createElement("canvas");
+  sample.width = 32;
+  sample.height = 24;
+  const context = sample.getContext("2d", { willReadFrequently: true })!;
+  context.drawImage(video, source.x, source.y, source.width, source.height, 0, 0, sample.width, sample.height);
+  const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+  let total = 0;
+  for (let index = 0; index < pixels.length; index += 4) total += (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3;
+  return total / (pixels.length / 4);
+}
+
+// Text printed sideways (e.g. "SITOP PSU8200" running up a front panel) only reads once turned level, so reads cycle through all three
+const READ_ROTATIONS = [0, Math.PI / 2, -Math.PI / 2];
+
+export interface ReadPass {
+  invert: boolean;
+  rotateRadians: number;
+}
+
+// Which way to read this time: cycles straight / turned right / turned left; the reader wants dark letters on light, so dark views are
+// flipped, and mixed views (a white sticker on a grey faceplate) alternate between normal and flipped after each full turn
+export function nextReadPass(video: HTMLVideoElement, region: PixelBox | null, readCount: number): ReadPass {
+  const rotateRadians = READ_ROTATIONS[readCount % READ_ROTATIONS.length];
+  const brightness = averageBrightness(video, region ?? { x: 0, y: 0, width: video.videoWidth, height: video.videoHeight });
+  if (brightness < DARK_VIEW_BRIGHTNESS) return { invert: true, rotateRadians };
+  if (brightness > LIGHT_VIEW_BRIGHTNESS) return { invert: false, rotateRadians };
+  return { invert: Math.floor(readCount / READ_ROTATIONS.length) % 2 === 1, rotateRadians };
+}
+
+// Straight read only, for the area right around a label (labels are read level)
+export function shouldInvert(video: HTMLVideoElement, region: PixelBox | null): boolean {
+  return averageBrightness(video, region ?? { x: 0, y: 0, width: video.videoWidth, height: video.videoHeight }) < DARK_VIEW_BRIGHTNESS;
+}
+
+// Copies a region of the video (or all of it) to a canvas, enlarged for small text, flipped to dark-on-light when asked
+export function captureRegion(video: HTMLVideoElement, region: PixelBox | null, targetWidth = 1600, invert = false): HTMLCanvasElement {
   const source = region ?? { x: 0, y: 0, width: video.videoWidth, height: video.videoHeight };
   const scale = Math.min(3, targetWidth / Math.max(1, source.width));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(source.width * scale);
   canvas.height = Math.round(source.height * scale);
   const context = canvas.getContext("2d")!;
-  context.filter = "grayscale(1) contrast(1.4)";
+  context.filter = invert ? "grayscale(1) invert(1) contrast(1.4)" : "grayscale(1) contrast(1.4)";
   context.drawImage(video, source.x, source.y, source.width, source.height, 0, 0, canvas.width, canvas.height);
   return canvas;
 }
