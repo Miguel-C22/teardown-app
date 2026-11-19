@@ -8,7 +8,13 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   root: path.join(projectRoot, "web"),
   plugins: [react()],
-  resolve: { alias: { "@shared": path.join(projectRoot, "shared/src") } },
+  resolve: {
+    alias: [
+      { find: "@shared", replacement: path.join(projectRoot, "shared/src") },
+      // The text reader only needs plain WebAssembly; the default build adds WebGPU and doubles the download (30 MB vs 15 MB)
+      { find: /^onnxruntime-web$/, replacement: "onnxruntime-web/wasm" },
+    ],
+  },
   build: { outDir: path.join(projectRoot, "dist"), emptyOutDir: true },
   // Pre-bundled at dev start so the lazily imported OCR library doesn't trigger a page reload mid-scan
   optimizeDeps: { include: ["tesseract.js"] },

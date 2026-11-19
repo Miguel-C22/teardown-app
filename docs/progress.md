@@ -19,6 +19,14 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 
 ## Checkpoint notes
 
+### PaddleOCR replaces Tesseract — 2026-11-19
+- `web/src/scan/ocr.ts`: PaddleOCR (PP-OCRv4, `@gutenye/ocr-browser` on `onnxruntime-web/wasm`) runs on the phone; models and the runtime's .wasm come from jsDelivr (pinned 1.4.2 / 1.31.1). First load about 30 MB, cached after. Tesseract stays as the fallback if PaddleOCR can't load.
+- Reads cycle straight / turned right / turned left; small crops are enlarged up to 2x; lines under score 0.6 are dropped.
+- Checked in real Chrome on the SITOP PSU8200 photo (460 px thumbnail): Tesseract read nothing; PaddleOCR read SIEMENS, DC24V/20A, the order number (a few confusable characters wrong at that size) and, turned right, "SITOP PSU8200" → Siemens SITOP PSU8200 (PSU).
+- Square DataMatrix/QR codes holding `1P<part number>+…` now give the part number (the Siemens faceplate code).
+- `/api/health` shows `version` (deployed git commit).
+- `npm test`: 181/181. `npm run e2e`: 100/100. Typecheck clean, build ok. Real phone: **not checked**.
+
 ### Read everything — 2026-11-19
 - Background text reading runs every ~2 s while moving (blurred fast sweeps skipped), also when barcodes are in view; repeat reads of recorded labels are silent.
 - `shared/src/textIdentity.ts`: brands, product families (PowerEdge, ProLiant, ThinkSystem, Catalyst, Nexus, PERC, Smart Array, MegaRAID, ConnectX, Xeon, EPYC, Tesla/Quadro, SITOP, SIMATIC, Smart-UPS, Seagate and WD drive families) and a search query (product name, else brand + part number). A product name alone records the item (REVIEW); all text and the search words are kept as evidence.
