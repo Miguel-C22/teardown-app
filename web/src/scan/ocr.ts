@@ -24,14 +24,25 @@ export function warmUpOcr(): void {
   void getOcrWorker().catch(() => undefined);
 }
 
-// Below this overall confidence (0–100) the text is too unsure to record anything from
-export const MIN_OCR_CONFIDENCE = 60;
+// Words read with less confidence than this (0–100) are dropped; clear words are kept even when the rest of the view is noisy
+export const MIN_WORD_CONFIDENCE = 60;
 
+// Reads all text in the image, judging each word on its own, so QR codes, logos and graphics in view don't throw away the clear words
 export async function readText(image: HTMLCanvasElement): Promise<string> {
   const ocrWorker = await getOcrWorker();
-  const result = await ocrWorker.recognize(image);
-  if ((result.data.confidence ?? 0) < MIN_OCR_CONFIDENCE) return "";
-  return result.data.text ?? "";
+  const result = await ocrWorker.recognize(image, {}, { text: true, blocks: true });
+  const blocks = result.data.blocks;
+  if (!blocks) return (result.data.confidence ?? 0) >= MIN_WORD_CONFIDENCE ? result.data.text ?? "" : "";
+  const lines: string[] = [];
+  for (const block of blocks) {
+    for (const paragraph of block.paragraphs) {
+      for (const line of paragraph.lines) {
+        const clearWords = line.words.filter((word) => word.confidence >= MIN_WORD_CONFIDENCE).map((word) => word.text.trim()).filter(Boolean);
+        if (clearWords.length) lines.push(clearWords.join(" "));
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 // The middle of the frame, where the tech points: smaller to read, and less stray text from neighbouring parts
