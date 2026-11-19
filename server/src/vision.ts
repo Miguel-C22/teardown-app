@@ -109,8 +109,8 @@ function loadFixture<Result>(kind: "sweep" | "closeup", fixtureName: string | un
 
 type ReasoningEffort = "none" | "minimal" | "low" | "medium";
 const REASONING_EFFORTS: ReasoningEffort[] = ["none", "minimal", "low", "medium"];
-// Reading labels and listing parts needs little thinking; less reasoning answers faster and costs less
-const DEFAULT_REASONING_EFFORT: ReasoningEffort = "minimal";
+// "low" is the setting proven to work with the default model; set OPENAI_REASONING_EFFORT=minimal to try a faster one
+const DEFAULT_REASONING_EFFORT: ReasoningEffort = "low";
 // Set when the model rejects the configured effort, so later calls go straight to one it accepts
 let effortRejected = false;
 
@@ -170,10 +170,16 @@ async function callVisionModel<Result>(
     };
   } catch (callError) {
     if (callError instanceof VisionError) throw callError;
+    // OpenAI's own reason goes to the logs and the phone, so a rejected request can be diagnosed (it never contains the key)
+    if (callError instanceof OpenAI.APIError) {
+      console.error(JSON.stringify({ event: "openai_error", status: callError.status ?? null, model: visionModel(), effort: reasoningEffort(), message: callError.message }));
+    }
     if (callError instanceof OpenAI.RateLimitError) throw new VisionError("vision rate limit reached, try again shortly", 429);
     if (callError instanceof OpenAI.AuthenticationError) throw new VisionError("the OpenAI API key was rejected", 503);
     if (callError instanceof OpenAI.APIConnectionError) throw new VisionError("could not reach the vision service", 503);
-    if (callError instanceof OpenAI.APIError) throw new VisionError(`vision service error ${callError.status ?? ""}`.trim(), 502);
+    if (callError instanceof OpenAI.APIError) {
+      throw new VisionError(`vision service error ${callError.status ?? ""}: ${callError.message}`.slice(0, 300), 502);
+    }
     throw callError;
   }
 }
