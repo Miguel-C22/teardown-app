@@ -3,6 +3,8 @@ import { IDENTIFIED_BY_LABEL, REVIEW_REASON_LABEL, formatPrice, photoUrl, type U
 
 interface ComponentCardProps {
   unit: UnitView;
+  // Removes a wrong read from the session
+  onRemove?: () => void;
 }
 
 const SOURCE_DISCLAIMER: Record<string, string> = {
@@ -11,9 +13,10 @@ const SOURCE_DISCLAIMER: Record<string, string> = {
   catalog: "Price range from the PoC starter catalog (illustrative estimate).",
   "ebay-description": "Price range from eBay listings matching what the AI saw, not a part number. Confirm the exact model before selling.",
   "ai-estimate": "Rough AI estimate from the part's appearance, not a market price. Confirm the exact model before selling.",
+  vendor: "Identified by the manufacturer's own lookup; price from the catalog or eBay where shown.",
 };
 
-export function ComponentCard({ unit }: ComponentCardProps) {
+export function ComponentCard({ unit, onRemove }: ComponentCardProps) {
   // The tech's own photo when it was kept, otherwise an example picture of this kind of part
   const ownPhoto = photoUrl(unit.photoPath);
   const thumbnail = ownPhoto ?? unit.imageUrl;
@@ -31,6 +34,10 @@ export function ComponentCard({ unit }: ComponentCardProps) {
         {thumbnail && <img className="component-thumb" src={thumbnail} alt={ownPhoto ? "Photo of the part" : "Example picture of this part"} data-testid="component-image" />}
         <div className="component-meta">
           <strong className="component-name">{unit.description ?? `${unit.manufacturer ?? ""} ${unit.partType}`.trim()}</strong>
+          {/* Appearance alone can name the family but rarely the exact SKU, so say so */}
+          {!unit.partNumber && unit.identifiedBy === "visual" && (
+            <span className="component-detail family-note" data-testid="family-note">Family only, not the exact SKU</span>
+          )}
           <span className="component-detail muted">Part number: {unit.partNumber ?? "not read"}</span>
           <span className="component-detail muted">Serial: {unit.serial ?? "not read"}</span>
           {unit.evidence && <span className="component-detail muted evidence">Read: {unit.evidence}</span>}
@@ -56,6 +63,9 @@ export function ComponentCard({ unit }: ComponentCardProps) {
       <p className="component-disclaimer muted">
         {unit.lookupSource ? SOURCE_DISCLAIMER[unit.lookupSource] ?? "" : "No price source matched this part yet."}
       </p>
+      {onRemove && (
+        <button type="button" className="btn-link card-remove" onClick={onRemove} data-testid="card-remove-btn">Wrong? Remove</button>
+      )}
     </div>
   );
 }

@@ -1,44 +1,53 @@
 import type { DecodedCode } from "@shared/labelGroup";
+import type { DecodeRequest, DecodeResponse } from "./decodeWorker";
 
-// WASM binary is served from web/public/zxing_reader.wasm (copied from node_modules at setup)
-const ZXING_WASM_URL = "/zxing_reader.wasm";
+// Frames are shrunk to this long edge for the fast pass; most label barcodes still read at this size
+export const FAST_DECODE_EDGE = 1280;
 
-interface ZxingPoint {
-  x: number;
-  y: number;
+let worker: Worker | null = null;
+let nextRequestId = 1;
+const pending = new Map<number, (codes: DecodedCode[]) => void>();
+
+function getWorker(): Worker {
+  if (worker) return worker;
+  worker = new Worker(new URL("./decodeWorker.ts", import.meta.url), { type: "module" });
+  worker.onmessage = (event: MessageEvent<DecodeResponse>) => {
+    const resolve = pending.get(event.data.requestId);
+    pending.delete(event.data.requestId);
+    resolve?.(event.data.codes.map((code) => ({ text: code.text, format: code.format, box: code.box })));
+  };
+  return worker;
 }
 
-interface ZxingResult {
-  text: string;
-  isValid: boolean;
-  position: { topLeft: ZxingPoint; topRight: ZxingPoint; bottomLeft: ZxingPoint; bottomRight: ZxingPoint };
+// Starts the decoder worker early so the first frame doesn't wait for the WASM download
+export async function initZxing(): Promise<void> {
+  getWorker();
 }
 
-type ReadBarcodes = (imageData: ImageData, options?: Record<string, unknown>) => Promise<ZxingResult[]>;
-
-let readBarcodes: ReadBarcodes | null = null;
-let loading: Promise<void> | null = null;
-
-export function initZxing(): Promise<void> {
-  loading ??= import("zxing-wasm/reader").then(({ readBarcodesFromImageData, setZXingModuleOverrides }) => {
-    setZXingModuleOverrides({ locateFile: () => ZXING_WASM_URL });
-    readBarcodes = readBarcodesFromImageData as unknown as ReadBarcodes;
+// Decodes every barcode in the frame on the worker; tryHarder is slower and kept for the occasional full-size pass
+export function decodeFrame(imageData: ImageData, tryHarder = false): Promise<DecodedCode[]> {
+  const requestId = nextRequestId++;
+  return new Promise((resolve) => {
+    pending.set(requestId, resolve);
+    getWorker().postMessage({ requestId, imageData, tryHarder } satisfies DecodeRequest, [imageData.data.buffer]);
   });
-  return loading;
 }
 
-// Decodes every barcode in the frame; tryHarder and several codes per frame suit dense server labels
-export async function decodeFrame(imageData: ImageData): Promise<DecodedCode[]> {
-  if (!readBarcodes) return [];
-  const results = await readBarcodes(imageData, { tryHarder: true, maxNumberOfSymbols: 24 });
-  return results
-    .filter((result) => result.isValid && result.text.trim())
-    .map((result) => {
-      const corners = [result.position.topLeft, result.position.topRight, result.position.bottomLeft, result.position.bottomRight];
-      const left = Math.min(...corners.map((corner) => corner.x));
-      const top = Math.min(...corners.map((corner) => corner.y));
-      const right = Math.max(...corners.map((corner) => corner.x));
-      const bottom = Math.max(...corners.map((corner) => corner.y));
-      return { text: result.text.trim(), box: { x: left, y: top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) } };
-    });
+// Draws the video into the canvas at most maxEdge on its long side and returns the pixels plus the scale used
+export function grabFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxEdge: number): { imageData: ImageData; scale: number } {
+  const scale = Math.min(1, maxEdge / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return { imageData: context.getImageData(0, 0, canvas.width, canvas.height), scale };
+}
+
+// Puts boxes found on a shrunken frame back into full video coordinates
+export function scaleCodes(codes: DecodedCode[], scale: number): DecodedCode[] {
+  if (scale === 1) return codes;
+  return codes.map((code) => ({
+    ...code,
+    box: { x: code.box.x / scale, y: code.box.y / scale, width: code.box.width / scale, height: code.box.height / scale },
+  }));
 }

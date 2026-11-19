@@ -45,6 +45,14 @@ function SessionDetail({ detail }: { detail: SessionSummary }) {
         <div><dt>Est. value</dt><dd>up to ${totalValue}</dd></div>
         <div><dt>Vision calls</dt><dd data-testid="vision-calls">{detail.visionUsage.calls}</dd></div>
         <div><dt>Vision cost</dt><dd>${detail.visionUsage.costUsd.toFixed(3)}</dd></div>
+        <div>
+          <dt>Avg AI wait</dt>
+          <dd data-testid="vision-avg-seconds">
+            {detail.visionUsage.calls ? `${((detail.visionUsage.visionMs ?? 0) / detail.visionUsage.calls / 1000).toFixed(1)} s` : "–"}
+          </dd>
+        </div>
+        <div><dt>Bench PC code</dt><dd data-testid="pairing-code">{detail.pairingCode || "–"}</dd></div>
+        {detail.techName && <div><dt>Tech</dt><dd>{detail.techName}</dd></div>}
       </dl>
 
       {gaps.length > 0 && (

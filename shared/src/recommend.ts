@@ -1,4 +1,6 @@
-export type IdentifiedBy = "barcode" | "label-read" | "visual" | "manual";
+// label-read = AI read the label; ocr = the phone read the sticker text; marking = chip or engraved text; hardware = bench PC report
+export type IdentifiedBy = "barcode" | "ocr" | "marking" | "label-read" | "visual" | "manual" | "hardware";
+export const IDENTIFIED_BY_VALUES: IdentifiedBy[] = ["barcode", "ocr", "marking", "label-read", "visual", "manual", "hardware"];
 export type Recommendation = "KEEP" | "REVIEW" | "RECYCLE";
 export type ReviewReason = "no-serial" | "no-part-number" | "visual-only" | "no-lookup-match" | "needs-bench-test";
 

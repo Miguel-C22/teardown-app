@@ -55,7 +55,7 @@ export async function lookupPartNumber(rawQuery: string): Promise<PartLookup | n
 
   const catalogEntry = lookupCatalog(query);
   if (!catalogEntry) return null;
-  const imageUrl = process.env.VISION_MODE === "mock" ? null : await withTimeout(getComponentImageUrl(catalogEntry.partType), 2_500);
+  const imageUrl = getComponentImageUrl(catalogEntry.partType);
   return withRecommendation({
     name: catalogEntry.name,
     category: catalogEntry.category,
@@ -78,14 +78,14 @@ export interface DescriptionLookupInput {
 // Prices a part identified by appearance: eBay listings for the AI's product name, else the AI's own rough range
 export async function lookupByDescription(input: DescriptionLookupInput): Promise<PartLookup | null> {
   const query = input.searchQuery?.trim() ?? "";
-  const imageFor = async () => (process.env.VISION_MODE === "mock" ? null : await withTimeout(getComponentImageUrl(input.category), 2_500));
+  const imageFor = () => getComponentImageUrl(input.category);
 
   if (query && process.env.EBAY_CLIENT_ID) {
     const ebayResult = await withTimeout(lookupPart(query), SOURCE_TIMEOUT_MS);
     if (ebayResult) {
       return {
         ...ebayResult, query, partType: input.category, confidence: "low", source: "ebay-description",
-        imageUrl: ebayResult.imageUrl ?? await imageFor(), recommendation: recommend(false, ebayResult.priceMax),
+        imageUrl: ebayResult.imageUrl ?? imageFor(), recommendation: recommend(false, ebayResult.priceMax),
       };
     }
   }
@@ -96,7 +96,7 @@ export async function lookupByDescription(input: DescriptionLookupInput): Promis
   const priceMax = Math.round(Math.max(estimate.low, estimate.high));
   return {
     query, name: query || input.category, category: input.category, partType: input.category,
-    priceMin, priceMax, imageUrl: await imageFor(), confidence: "low", listingCount: 0, source: "ai-estimate",
+    priceMin, priceMax, imageUrl: imageFor(), confidence: "low", listingCount: 0, source: "ai-estimate",
     recommendation: recommend(false, priceMax),
   };
 }

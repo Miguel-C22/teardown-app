@@ -19,6 +19,30 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 
 ## Checkpoint notes
 
+### Automatic scanning, AI only on request — 2026-11-19
+- Scan screen buttons: **Find with AI**, **Done**, **⚙ Settings** (part type, torch, raw codes). Removed: Read sticker, Analyze view, Identify with AI, Walk mode, the part-type row. A guidance line under the camera says what to do.
+- Sticker text is read automatically after ~1 s holding still on a view with no barcode; two empty reads highlight Find with AI.
+- Accuracy: barcodes and sticker text must read the same way twice (`shared/src/readConfirm.ts`); OCR below 60 confidence is ignored; a single-read part number from around a serial is accepted only if it matches a known manufacturer format.
+- Find with AI = sweep, merged across presses (`mergeWalkFrame`); fully read parts are recorded, the rest wait for Add / Add all.
+- Fix: **Wrong? Remove** on each card (`DELETE /api/sessions/:id/units/:unitId`, `deleteUnit`). Done: summary with gaps and **Next server**.
+- The close-up AI route stays on the server, unused by the UI. New fixture `sweep-cooler.json`. Vite warm-up added so a cold e2e run doesn't time out.
+- `npm test`: 164/164. `npm run e2e`: 92/92 (also from a cleared Vite cache). Typecheck clean, build ok. Auto sticker reading on a real phone: **not checked** (camera-only).
+
+### Sticker first, AI last; walk mode; hardware check; production basics — 2026-11-19
+Identification order: 1) barcode + on-phone OCR, 2) part-number and marking decoders, 3) AI, 4) bench PC hardware report.
+- **Storage**: `server/src/store.ts` is async. Postgres (Neon HTTP driver) when `DATABASE_URL` is set, else SQLite locally, memory on Vercel. `/api/health` reports `storage`. Contract test `server/test/storeContract.test.ts` (Postgres when `TEST_DATABASE_URL` is set). Tests and e2e force `DATABASE_URL=""`.
+- **Barcodes**: decoded in a Web Worker (`web/src/scan/decodeWorker.ts`), limited formats, 1280px fast pass with a full-size pass after 4 empty frames; saves no longer pause the frame loop.
+- **QR codes**: `shared/src/qrPayload.ts` splits MH10.8.2, GS1, `PID/VID/SN` text and plain multi-field payloads. A 1D barcode's serial always wins; a different serial inside a QR next to it is ignored (`shared/src/labelGroup.ts`).
+- **Cisco**: PIDs (switches, optics, PSUs, UCS memory), VIDs and serials (`shared/src/barcodeClassify.ts`). New categories NETWORK and OPTIC.
+- **Read sticker**: Tesseract.js on the phone (`web/src/scan/ocr.ts`), fields by prefix (`shared/src/labelText.ts`). Also runs automatically around a label whose barcodes gave only a serial. Show raw codes toggle lists what was decoded.
+- **Decoders** (`shared/src/partDecoders.ts`): Samsung / SK Hynix (HMA8x) / Micron DDR4 module numbers, Seagate models, a starter Intel sSpec table. Names only, never prices.
+- **AI**: buttons renamed "Analyze view (AI)", "Identify with AI", "Add by look (AI)". Sweep photo 1024px, reasoning effort `minimal` (falls back to `low` if refused), output caps 8000 / 3000. Pictures are inline SVGs per category (no Wikipedia fetch). Appearance-only cards say "Family only, not the exact SKU". Bench shows average AI wait.
+- **Walk mode** (`shared/src/walkMerge.ts`): AI only when the phone pauses on a view with no barcode just read, at most one call per 2 s, pauses after 30 calls. Repeats are merged by serial, or by name against the previous frame.
+- **Hardware check**: `scripts/bench-report.sh` (smartctl, dmidecode, lspci) posts to `POST /api/hardware-reports` with the session's 6-digit bench PC code. Drives and DIMMs are matched by serial and marked "via hardware check"; unmatched ones are added; CPUs and cards are returned as sightings only.
+- **Production basics**: sign-in with name + `TEAM_PASSCODE` (signed cookie), `AI_DAILY_BUDGET_USD` (default $5, 429 when reached), JSON log lines per AI call and error, offline queue for saves ("N waiting to sync").
+- **Not built**: Cisco SN2INFO and Dell TechDirect lookups (their docs could not be fetched; not guessed), HPE/Lenovo lookups, DRAM chip-code decoding, photo storage, drive wipe gate.
+- `npm test`: 160/160. `npm run e2e`: 84/84 (first cold run after changes had 3 timeouts that passed on rerun). Typecheck clean, build ok. Neon, live AI, real phone and the bench script on real hardware: **not checked**.
+
 ### Every component, and results that stay on screen — 2026-11-18
 - Analyze view now lists every removable component, valuable or not. New groups: COOLING (coolers, heatsinks, fans), BOARD (motherboard, risers, backplanes, mezzanine, BMC modules), CHASSIS (rails, bezels, caddies). OTHER covers the rest. Only empty slots and loose screws are skipped.
 - A CPU under its cooler counts as a CPU and a COOLING part. Close-ups identify unlabelled parts from logo, shape, fins and heat pipes, connectors and socket.

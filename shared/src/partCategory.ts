@@ -1,5 +1,7 @@
 // Part categories shared by barcodes, vision results, units and the "what's left" checklist
-export const PART_CATEGORIES = ["DIMM", "CPU", "HDD", "SSD", "PSU", "NIC", "RAID", "GPU", "COOLING", "BOARD", "CHASSIS", "OTHER"] as const;
+export const PART_CATEGORIES = [
+  "DIMM", "CPU", "HDD", "SSD", "PSU", "NIC", "RAID", "GPU", "COOLING", "BOARD", "CHASSIS", "NETWORK", "OPTIC", "OTHER",
+] as const;
 
 export type PartCategory = (typeof PART_CATEGORIES)[number];
 
@@ -15,6 +17,8 @@ export const CATEGORY_LABEL: Record<PartCategory, string> = {
   COOLING: "Cooling",
   BOARD: "Boards",
   CHASSIS: "Chassis parts",
+  NETWORK: "Network gear",
+  OPTIC: "Optics",
   OTHER: "Other",
 };
 
@@ -34,6 +38,15 @@ const CATEGORY_ALIASES: Record<string, PartCategory> = {
   BEZEL: "CHASSIS",
   CADDY: "CHASSIS",
   TRAY: "CHASSIS",
+  SWITCH: "NETWORK",
+  ROUTER: "NETWORK",
+  FIREWALL: "NETWORK",
+  LINECARD: "NETWORK",
+  SUPERVISOR: "NETWORK",
+  TRANSCEIVER: "OPTIC",
+  SFP: "OPTIC",
+  QSFP: "OPTIC",
+  OPTICS: "OPTIC",
 };
 
 export function normalizeCategory(value: string | null | undefined): PartCategory {

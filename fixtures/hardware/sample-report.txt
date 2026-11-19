@@ -1,0 +1,70 @@
+===PAIRING 000000
+===SMARTCTL /dev/sda
+{
+  "device": { "name": "/dev/sda", "type": "sat", "protocol": "ATA" },
+  "model_family": "Seagate Barracuda 7200.14 (AF)",
+  "model_name": "ST2000DM001-1CH164",
+  "serial_number": "Z1E41HH0",
+  "user_capacity": { "blocks": 3907029168, "bytes": 2000398934016 },
+  "rotation_rate": 7200,
+  "smart_status": { "passed": true },
+  "power_on_time": { "hours": 31876 }
+}
+===SMARTCTL /dev/nvme0
+{
+  "device": { "name": "/dev/nvme0", "type": "nvme", "protocol": "NVMe" },
+  "model_name": "SAMSUNG MZQLB960HAJR-00007",
+  "serial_number": "S437NA0M123456",
+  "nvme_total_capacity": 960197124096,
+  "smart_status": { "passed": true },
+  "power_on_time": { "hours": 1204 }
+}
+===DMIDECODE-MEMORY
+# dmidecode 3.5
+Getting SMBIOS data from sysfs.
+
+Handle 0x1100, DMI type 17, 84 bytes
+Memory Device
+	Size: 32 GB
+	Locator: A1
+	Type: DDR4
+	Type Detail: Synchronous Registered (Buffered)
+	Speed: 2666 MT/s
+	Manufacturer: 00CE00B300CE
+	Serial Number: 3A1B2C3D
+	Part Number: M393A4K40CB2-CTD
+
+Handle 0x1101, DMI type 17, 84 bytes
+Memory Device
+	Size: No Module Installed
+	Locator: A2
+	Type: Unknown
+	Serial Number: Not Specified
+	Part Number: Not Specified
+===DMIDECODE-PROCESSOR
+Handle 0x0400, DMI type 4, 48 bytes
+Processor Information
+	Socket Designation: CPU1
+	Version: Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz
+	Status: Populated, Enabled
+
+Handle 0x0401, DMI type 4, 48 bytes
+Processor Information
+	Socket Designation: CPU2
+	Version: Not Specified
+	Status: Unpopulated
+===LSPCI
+Slot:	3b:00.0
+Class:	Ethernet controller
+Vendor:	Intel Corporation
+Device:	Ethernet Controller X710 for 10GbE SFP+
+
+Slot:	18:00.0
+Class:	RAID bus controller
+Vendor:	Broadcom / LSI
+Device:	MegaRAID SAS-3 3108 [Invader]
+
+Slot:	03:00.0
+Class:	VGA compatible controller
+Vendor:	Matrox Electronics Systems Ltd.
+Device:	Integrated Matrox G200eW3 Graphics Controller

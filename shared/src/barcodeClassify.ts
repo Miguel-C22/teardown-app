@@ -1,6 +1,6 @@
 import type { PartCategory } from "./partCategory.js";
 
-export type CodeKind = "partNumber" | "ppid" | "serial" | "macAddress" | "wwn" | "upc" | "unknown";
+export type CodeKind = "partNumber" | "ppid" | "serial" | "macAddress" | "wwn" | "upc" | "version" | "unknown";
 
 export interface ClassifiedCode {
   text: string;
@@ -37,7 +37,22 @@ const PART_NUMBER_PATTERNS: PartNumberPattern[] = [
   { pattern: /^BCM95\d{3}/, manufacturer: "Broadcom", category: "NIC" },
   { pattern: /^(9[2-6]\d\d-\d{1,2}[ie])/i, manufacturer: "Broadcom/LSI", category: "RAID" },
   { pattern: /^900-\d[A-Z0-9]{3,}/, manufacturer: "NVIDIA", category: "GPU" },
+  // Intel sSpec, laser-marked on the CPU lid (SR3B9 = Xeon Gold 6130)
+  { pattern: /^S[RL][0-9A-Z]{3}$/, manufacturer: "Intel", category: "CPU" },
+  // Cisco product IDs (PIDs): transceivers, power supplies, then switches, routers and their modules
+  { pattern: /^(GLC|SFP|QSFP|CVR|XFP|CFP|DWDM|ONS-S[EI])-[0-9A-Z][0-9A-Z+=/.-]*$/, manufacturer: "Cisco", category: "OPTIC" },
+  { pattern: /^(PWR|C9K-PWR|NXA-PAC|NXA-PDC|N9K-PAC|N2200-PAC)-[0-9A-Z][0-9A-Z=/.-]*$/, manufacturer: "Cisco", category: "PSU" },
+  { pattern: /^UCS-(MR|ML|MKD)-[0-9A-Z][0-9A-Z=/.-]*$/, manufacturer: "Cisco", category: "DIMM" },
+  { pattern: /^UCS-(HD|SD|HY|NVMEH?)[0-9A-Z][0-9A-Z=/.-]*$/, manufacturer: "Cisco", category: null },
+  { pattern: /^(WS-C\d{4}[A-Z]?|WS-X\d{4}|C9\d{3}[A-Z]?|C1\d{3}[A-Z]?|N[2-9]K|ASR\d{1,4}|AIR|IE|CBS\d{3}|SG\d{3}|NIM|SM-X|EHWIC|HWIC)-[0-9A-Z][0-9A-Z=/.+-]*$/, manufacturer: "Cisco", category: "NETWORK" },
+  { pattern: /^(CISCO\d{3,4}|ISR\d{3,4})[0-9A-Z=/.-]*$/, manufacturer: "Cisco", category: "NETWORK" },
+  { pattern: /^UCS[CBX]?-[0-9A-Z][0-9A-Z=/.-]*$/, manufacturer: "Cisco", category: null },
 ];
+
+// Cisco serials: three letters (factory), four digits (year and week), four characters, e.g. FOC1234X0YZ
+const CISCO_SERIAL = /^[A-Z]{3}\d{4}[0-9A-Z]{4}$/;
+// Cisco's hardware version, printed as VID: V02 next to the PID
+const CISCO_VID = /^V\d{2}$/;
 
 const DELL_PPID = /^([A-Z]{2})-?(0[0-9A-Z]{5})-?([0-9A-Z]{5})-?([0-9A-Z]{3})-?([0-9A-Z]{4})(?:-?([A-Z][0-9]{2}))?$/;
 const DELL_PART_NUMBER = /^0[0-9A-Z]{5}$/;
@@ -75,10 +90,13 @@ export function classifyCode(rawText: string): ClassifiedCode {
   if (LENOVO_FRU.test(upper)) return result(text, "partNumber", upper, "Lenovo", null);
   if (SEAGATE_PART_NUMBER.test(upper)) return result(text, "partNumber", upper, "Seagate", null);
   if (SHORT_NUMBER_ONLY.test(upper)) return result(text, "unknown", null, null, null);
+  if (CISCO_VID.test(upper)) return result(text, "version", null, "Cisco", null);
 
   for (const knownPattern of PART_NUMBER_PATTERNS) {
     if (knownPattern.pattern.test(upper)) return result(text, "partNumber", upper, knownPattern.manufacturer, knownPattern.category);
   }
+  // After the part-number patterns, so an 11-character drive model is never taken for a Cisco serial
+  if (CISCO_SERIAL.test(upper)) return result(text, "serial", null, "Cisco", null);
 
   if (MAC_WITH_SEPARATORS.test(upper)) return result(text, "macAddress", null, null, "NIC");
   if (WWN.test(upper)) return result(text, "wwn", null, null, null);

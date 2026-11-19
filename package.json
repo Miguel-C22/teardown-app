@@ -15,12 +15,16 @@
     "vision:eval": "tsx scripts/vision-eval.ts"
   },
   "dependencies": {
+    "@neon/config": "^1.14.4",
+    "@neon/env": "^2.1.7",
+    "@neondatabase/serverless": "^1.2.1",
     "express": "^4.21.2",
     "openai": "^7.60.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "selfsigned": "^2.4.1",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.6.7",
     "zxing-wasm": "^3.1.7"
   },

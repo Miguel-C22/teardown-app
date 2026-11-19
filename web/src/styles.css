@@ -120,6 +120,25 @@ h1 { font-size: 32px; line-height: 1.1; margin: 6px 0 8px; }
 .repeat-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 12px; background: var(--surface); border: 1px solid var(--review); border-radius: 6px; }
 .repeat-prompt span { flex: 1 1 100%; }
 .sweep-list { margin-top: 16px; }
+.scan-guidance { margin: 12px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--surface); font-weight: 600; font-size: 15px; }
+.scan-guidance-warn { border-left: 3px solid var(--review); color: var(--review); }
+.ai-cost { font-weight: 400; font-size: 13px; opacity: 0.85; }
+.scan-settings { margin-top: 12px; font-size: 14px; }
+.scan-settings summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
+.scan-settings[open] { display: flex; flex-direction: column; gap: 10px; }
+.settings-row { display: flex; align-items: center; gap: 8px; }
+.done-summary { margin-top: 12px; padding: 12px; border: 1px solid var(--keep); border-radius: 6px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.done-summary p { margin: 0; }
+.card-remove { align-self: flex-start; font-size: 13px; }
+.pending-badge { margin-top: 12px; padding: 6px 10px; display: inline-block; border-radius: 999px; background: color-mix(in srgb, var(--review) 18%, transparent); color: var(--review); font-weight: 600; font-size: 14px; }
+.sign-in-form { display: flex; flex-direction: column; gap: 12px; max-width: 360px; }
+.walk-status { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--review); background: var(--surface); border-radius: 6px; font-size: 14px; display: flex; flex-direction: column; gap: 8px; }
+.walk-paused { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+.family-note { color: var(--review); font-size: 13px; }
+.raw-codes { margin-top: 12px; padding: 10px 12px; background: var(--surface); border-radius: 6px; }
+.raw-code-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.raw-code-list code { overflow-wrap: anywhere; }
+.raw-code-source { display: inline-block; min-width: 72px; color: var(--muted); font-size: 12px; }
 .result-cards { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
 .result-cards-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .result-cards-header .recent-heading { margin: 0; }

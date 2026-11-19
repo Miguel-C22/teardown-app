@@ -31,13 +31,15 @@ export interface SessionInfo {
   assetTag: string;
   model: string;
   createdAt: string;
+  techName?: string | null;
+  pairingCode?: string;
 }
 
 export interface SessionSummary extends SessionInfo {
   units: UnitView[];
   remaining: RemainingRow[];
   sweepCount: number;
-  visionUsage: { calls: number; inputTokens: number; outputTokens: number; costUsd: number };
+  visionUsage: { calls: number; inputTokens: number; outputTokens: number; costUsd: number; visionMs?: number };
 }
 
 export interface LookupView {
@@ -48,7 +50,7 @@ export interface LookupView {
   imageUrl: string | null;
   confidence: "high" | "medium" | "low";
   listingCount: number;
-  source: "ebay" | "upcitemdb" | "catalog" | "ebay-description" | "ai-estimate";
+  source: "ebay" | "upcitemdb" | "catalog" | "decoder" | "vendor" | "ebay-description" | "ai-estimate";
   recommendation: Recommendation;
 }
 
@@ -67,6 +69,7 @@ export interface SweepResponse {
   chassisModelGuess: string | null;
   parts: SweepPartView[];
   session: SessionSummary;
+  timing?: { visionMs: number; lookupMs: number };
 }
 
 export interface CloseupResponse {
@@ -96,6 +99,8 @@ export const PRICE_SOURCE_LABEL: Record<string, string> = {
   ebay: "eBay",
   upcitemdb: "UPCitemdb",
   catalog: "catalog",
+  decoder: "decoded part number",
+  vendor: "manufacturer lookup",
   "ebay-description": "eBay, by description",
   "ai-estimate": "AI estimate",
 };
@@ -106,8 +111,16 @@ async function readJson<Body>(response: Response): Promise<Body> {
   return body;
 }
 
+// The request never reached the server (no signal, Wi-Fi dropped), so it is safe to queue and send again
+export class OfflineError extends Error {}
+
 export async function postJson<Body>(url: string, payload: unknown): Promise<Body> {
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  } catch {
+    throw new OfflineError("No connection");
+  }
   return readJson<Body>(response);
 }
 
@@ -134,7 +147,10 @@ export const REVIEW_REASON_LABEL: Record<ReviewReason, string> = {
 
 export const IDENTIFIED_BY_LABEL: Record<IdentifiedBy, string> = {
   barcode: "barcode",
-  "label-read": "label read",
-  visual: "appearance",
+  ocr: "sticker text",
+  marking: "part markings",
+  "label-read": "AI label read",
+  visual: "AI, by appearance",
   manual: "typed",
+  hardware: "hardware check",
 };

@@ -57,6 +57,10 @@ export function ScanPage() {
     if (session) refreshSummary(session.id);
   }, [session, refreshSummary]);
 
+  const handleUnitRemoved = useCallback((unitId: string) => {
+    setUnits((previous) => previous.filter((existing) => existing.id !== unitId));
+  }, []);
+
   function rescanTag() {
     setSession(null);
     setSummary(null);
@@ -71,7 +75,10 @@ export function ScanPage() {
 
   return (
     <>
-      <CameraScanner session={session} onUnit={handleUnit} onSessionUpdate={setSummary} feedMode={feedMode} modelText={modelText} onRescanTag={rescanTag} />
+      <CameraScanner
+        session={session} summary={summary} onUnit={handleUnit} onUnitRemoved={handleUnitRemoved} onSessionUpdate={setSummary}
+        feedMode={feedMode} modelText={modelText} onRescanTag={rescanTag}
+      />
       <RemainingTray rows={summary?.remaining ?? []} units={summary?.units ?? units} />
       {units.length > 0 && (
         <section className="screen recent-units">

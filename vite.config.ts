@@ -10,4 +10,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@shared": path.join(projectRoot, "shared/src") } },
   build: { outDir: path.join(projectRoot, "dist"), emptyOutDir: true },
+  // Pre-bundled at dev start so the lazily imported OCR library doesn't trigger a page reload mid-scan
+  optimizeDeps: { include: ["tesseract.js"] },
+  // Compiles the app as soon as the dev server starts, so the first page load (and the first e2e test) doesn't time out
+  server: { warmup: { clientFiles: ["./src/main.tsx", "./src/scan/CameraScanner.tsx", "./src/scan/decodeWorker.ts"] } },
 });

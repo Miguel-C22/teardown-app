@@ -22,6 +22,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     reuseExistingServer: false,
     timeout: 60_000,
-    env: { PORT: String(port), VISION_MODE: "mock" },
+    // An empty DATABASE_URL keeps e2e runs on local SQLite even when .env.local points at Neon
+    env: { PORT: String(port), VISION_MODE: "mock", DATABASE_URL: "" },
   },
 });

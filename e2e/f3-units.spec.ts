@@ -16,7 +16,8 @@ test("scanning 16 unique DIMM serials creates 16 unit rows", async ({ page }) =>
   await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
-  await page.getByTestId("part-type-DIMM").click();
+  await page.getByTestId("settings-btn").click();
+  await page.getByTestId("part-type-select").selectOption("DIMM");
 
   for (let index = 0; index < 10; index++) {
     await page.getByTestId("fake-scan-input").fill(`DIMM-${String(index).padStart(3, "0")}`);

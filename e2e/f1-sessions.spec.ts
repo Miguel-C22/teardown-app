@@ -29,7 +29,7 @@ test("a server with no tag can still be started without typing", async ({ page }
 
 test("the first sweep fills in the server model", async ({ page }) => {
   await startSession(page, "/scan?feed=1", "SVR-MODEL-01");
-  await page.getByTestId("sweep-btn").click();
+  await page.getByTestId("ai-find-btn").click();
   await expect(page.getByTestId("session-line")).toHaveText("SVR-MODEL-01 · Dell PowerEdge R740");
 });
 

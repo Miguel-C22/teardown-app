@@ -1,5 +1,7 @@
 import { classifyCode, isUnitSerial, type ClassifiedCode } from "./barcodeClassify.js";
+import type { FieldHint } from "./labelText.js";
 import type { PartCategory } from "./partCategory.js";
+import { isTwoDimensionalFormat, parseTwoDimensionalPayload } from "./qrPayload.js";
 
 export interface PixelBox {
   x: number;
@@ -11,6 +13,34 @@ export interface PixelBox {
 export interface DecodedCode {
   text: string;
   box: PixelBox;
+  // Barcode format from the decoder, e.g. "Code128" or "QRCode"; absent for typed or injected codes
+  format?: string;
+  // What a printed prefix or data identifier says this value is
+  hint?: FieldHint | null;
+  // True for a field split out of a QR, DataMatrix or PDF417 code
+  fromTwoDimensional?: boolean;
+}
+
+// Replaces each 2D code with the fields inside it; a payload with nothing usable is dropped
+export function expandTwoDimensionalCodes(decodedCodes: DecodedCode[]): DecodedCode[] {
+  return decodedCodes.flatMap((decoded) => {
+    if (!isTwoDimensionalFormat(decoded.format)) return [decoded];
+    return parseTwoDimensionalPayload(decoded.text).map((field) => ({ text: field.text, box: decoded.box, hint: field.hint, fromTwoDimensional: true }));
+  });
+}
+
+// A printed prefix ("S/N", "PID") or data identifier outranks the pattern guess
+function classifyWithHint(decoded: DecodedCode): ClassifiedCode {
+  const classified = classifyCode(decoded.text);
+  const upper = decoded.text.trim().toUpperCase();
+  if (decoded.hint === "serial" && classified.kind !== "ppid" && /^[0-9A-Z][0-9A-Z-]{3,39}$/.test(upper)) {
+    return { ...classified, kind: "serial", partNumber: null };
+  }
+  if (decoded.hint === "partNumber" && classified.kind !== "partNumber" && classified.kind !== "ppid") {
+    return { ...classified, kind: "partNumber", partNumber: upper };
+  }
+  if (decoded.hint === "version") return { ...classified, kind: "version", partNumber: null };
+  return classified;
 }
 
 export interface LabelGroup {
@@ -43,7 +73,11 @@ function unionBox(boxes: PixelBox[]): PixelBox {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-function buildGroup(members: Array<{ decoded: DecodedCode; classified: ClassifiedCode }>): LabelGroup {
+type Member = { decoded: DecodedCode; classified: ClassifiedCode };
+
+function buildGroup(unorderedMembers: Member[]): LabelGroup {
+  // 1D barcodes come first so their serial and part number win over values found inside a QR code
+  const members = [...unorderedMembers].sort((first, second) => Number(!!first.decoded.fromTwoDimensional) - Number(!!second.decoded.fromTwoDimensional));
   const classifiedCodes = members.map((member) => member.classified);
   const serialCode = classifiedCodes.find(isUnitSerial) ?? null;
   // A model number that names the product (ST2000DM001) prices better than a vendor-internal one (1CH164-302)
@@ -61,14 +95,34 @@ function buildGroup(members: Array<{ decoded: DecodedCode; classified: Classifie
   };
 }
 
+const sameBox = (first: PixelBox, second: PixelBox) =>
+  first.x === second.x && first.y === second.y && first.width === second.width && first.height === second.height;
+
+// One QR code is one part: if its fields hold several serial-looking values, keep the labelled serial (or the first)
+function keepOneSerialPerTwoDimensionalCode(cluster: Member[]): Member[] {
+  const kept: Member[] = [];
+  for (const member of cluster) {
+    if (!member.decoded.fromTwoDimensional || !isUnitSerial(member.classified)) {
+      kept.push(member);
+      continue;
+    }
+    const siblings = cluster.filter((other) => other.decoded.fromTwoDimensional && isUnitSerial(other.classified) && sameBox(other.decoded.box, member.decoded.box));
+    const chosen = siblings.find((other) => other.decoded.hint === "serial") ?? siblings[0];
+    if (chosen === member) kept.push(member);
+  }
+  return kept;
+}
+
 // Groups the barcodes decoded in one frame into labels, one label per physical part
 export function groupCodesIntoLabels(decodedCodes: DecodedCode[], gapRatio: number = SAME_LABEL_GAP_RATIO): LabelGroup[] {
+  const expandedCodes = expandTwoDimensionalCodes(decodedCodes);
+  const oneDimensionalTexts = new Set(expandedCodes.filter((decoded) => !decoded.fromTwoDimensional).map((decoded) => decoded.text.trim().toUpperCase()));
   // Same text twice at the same spot is one barcode read twice; same text elsewhere is a neighbouring identical part
-  const uniqueCodes = decodedCodes.filter(
-    (decoded, index) => decodedCodes.findIndex((other) => other.text === decoded.text && edgeGap(other.box, decoded.box) === 0) === index
-  );
-  const members = uniqueCodes
-    .map((decoded) => ({ decoded, classified: classifyCode(decoded.text) }))
+  const uniqueCodes = expandedCodes
+    .filter((decoded) => !decoded.fromTwoDimensional || !oneDimensionalTexts.has(decoded.text.trim().toUpperCase()))
+    .filter((decoded, index, codes) => codes.findIndex((other) => other.text === decoded.text && edgeGap(other.box, decoded.box) === 0) === index);
+  const members: Member[] = uniqueCodes
+    .map((decoded) => ({ decoded, classified: classifyWithHint(decoded) }))
     .filter((member) => member.classified.kind !== "unknown");
 
   const parentIndex = members.map((_member, index) => index);
@@ -83,14 +137,19 @@ export function groupCodesIntoLabels(decodedCodes: DecodedCode[], gapRatio: numb
     }
   }
 
-  const clusters = new Map<number, typeof members>();
+  const clusters = new Map<number, Member[]>();
   members.forEach((member, index) => {
     const root = findRoot(index);
     clusters.set(root, [...(clusters.get(root) ?? []), member]);
   });
 
   const labels: LabelGroup[] = [];
-  for (const cluster of clusters.values()) {
+  for (const rawCluster of clusters.values()) {
+    // When a label has a 1D serial barcode, a different serial inside its QR code is a tracking code, not a second part
+    const hasOneDimensionalSerial = rawCluster.some((member) => !member.decoded.fromTwoDimensional && isUnitSerial(member.classified));
+    const cluster = hasOneDimensionalSerial
+      ? rawCluster.filter((member) => !(member.decoded.fromTwoDimensional && isUnitSerial(member.classified)))
+      : keepOneSerialPerTwoDimensionalCode(rawCluster);
     const serialMembers = cluster.filter((member) => isUnitSerial(member.classified));
     if (serialMembers.length <= 1) {
       labels.push(buildGroup(cluster));

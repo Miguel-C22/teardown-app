@@ -62,7 +62,8 @@ const SWEEP_SYSTEM = `You inspect photos of opened rack servers during teardown 
 Group each part under one category:
 DIMM (memory), CPU (a CPU still under its cooler counts as a CPU and its cooler as a separate COOLING part), HDD, SSD (including NVMe), PSU, NIC (including OCP network cards), RAID (RAID or HBA controllers), GPU,
 COOLING (CPU coolers, heatsinks, fans and fan modules), BOARD (motherboard, riser cards, drive backplanes, mezzanine cards, BMC/iDRAC/iLO modules),
-CHASSIS (rails, bezels, drive caddies and trays, the chassis itself), OTHER (cables, batteries, TPM, SD or BOSS boot modules, optical drives and anything else).
+CHASSIS (rails, bezels, drive caddies and trays, the chassis itself), NETWORK (switches, routers, firewalls, line cards, supervisor and network modules),
+OPTIC (SFP, SFP+, QSFP and other pluggable transceivers), OTHER (cables, batteries, TPM, SD or BOSS boot modules, optical drives and anything else).
 Skip only empty slots and loose screws.
 For each part give a bounding box in fractions of the image size (x and y are the top-left corner).
 Set needsCloseUp to true when its exact part number or serial is not fully legible.
@@ -106,6 +107,23 @@ function loadFixture<Result>(kind: "sweep" | "closeup", fixtureName: string | un
   return { result: schema.parse(JSON.parse(fixtureText)), usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 }, mode: "mock" };
 }
 
+type ReasoningEffort = "none" | "minimal" | "low" | "medium";
+const REASONING_EFFORTS: ReasoningEffort[] = ["none", "minimal", "low", "medium"];
+// Reading labels and listing parts needs little thinking; less reasoning answers faster and costs less
+const DEFAULT_REASONING_EFFORT: ReasoningEffort = "minimal";
+// Set when the model rejects the configured effort, so later calls go straight to one it accepts
+let effortRejected = false;
+
+function reasoningEffort(): ReasoningEffort {
+  if (effortRejected) return "low";
+  const configured = process.env.OPENAI_REASONING_EFFORT?.trim() as ReasoningEffort | undefined;
+  return configured && REASONING_EFFORTS.includes(configured) ? configured : DEFAULT_REASONING_EFFORT;
+}
+
+function isEffortRejection(callError: unknown): boolean {
+  return callError instanceof OpenAI.BadRequestError && /reasoning|effort/i.test(callError.message);
+}
+
 async function callVisionModel<Result>(
   systemPrompt: string,
   userText: string,
@@ -113,14 +131,15 @@ async function callVisionModel<Result>(
   mediaType: "image/jpeg" | "image/png" | "image/webp",
   schema: typeof SweepResultSchema | typeof CloseupResultSchema,
   schemaName: string,
+  maxOutputTokens: number,
 ): Promise<VisionResponse<Result>> {
   const client = getClient();
   try {
-    const response = await client.responses.parse({
+    const request = () => client.responses.parse({
       model: visionModel(),
       instructions: systemPrompt,
-      reasoning: { effort: "low" },
-      max_output_tokens: 16000,
+      reasoning: { effort: reasoningEffort() },
+      max_output_tokens: maxOutputTokens,
       store: false,
       input: [{
         role: "user",
@@ -131,6 +150,15 @@ async function callVisionModel<Result>(
       }],
       text: { format: zodTextFormat(schema, schemaName) },
     });
+    let response: Awaited<ReturnType<typeof request>>;
+    try {
+      response = await request();
+    } catch (firstError) {
+      if (effortRejected || !isEffortRejection(firstError)) throw firstError;
+      // This model doesn't take the low-effort setting: remember that and retry once at "low"
+      effortRejected = true;
+      response = await request();
+    }
     if (wasRefused(response)) throw new VisionError("the vision model declined this image", 422);
     if (response.status === "incomplete" || !response.output_parsed) throw new VisionError("the vision model returned no usable reading", 502);
     const inputTokens = response.usage?.input_tokens ?? 0;
@@ -150,6 +178,10 @@ async function callVisionModel<Result>(
   }
 }
 
+// Output caps sized for a busy server (about 40 parts) and one label; reasoning tokens count toward them
+const SWEEP_MAX_OUTPUT_TOKENS = 8000;
+const CLOSEUP_MAX_OUTPUT_TOKENS = 3000;
+
 export interface VisionRequest {
   imageBase64: string;
   mediaType: "image/jpeg" | "image/png" | "image/webp";
@@ -160,12 +192,17 @@ export interface VisionRequest {
 export async function analyzeSweep(request: VisionRequest): Promise<VisionResponse<SweepResult>> {
   if (visionMode() === "mock") return loadFixture("sweep", request.fixture, SweepResultSchema);
   const serverLine = request.serverModel ? `The server is a ${request.serverModel}.` : "The server model is unknown.";
-  return callVisionModel<SweepResult>(SWEEP_SYSTEM, `${serverLine} List every resellable component in this photo.`, request.imageBase64, request.mediaType, SweepResultSchema, "sweep_result");
+  return callVisionModel<SweepResult>(
+    SWEEP_SYSTEM, `${serverLine} List every component in this photo.`, request.imageBase64, request.mediaType, SweepResultSchema, "sweep_result", SWEEP_MAX_OUTPUT_TOKENS,
+  );
 }
 
 export async function analyzeCloseup(request: VisionRequest & { categoryHint: string | null }): Promise<VisionResponse<CloseupResult>> {
   if (visionMode() === "mock") return loadFixture("closeup", request.fixture, CloseupResultSchema);
   const serverLine = request.serverModel ? `It came out of a ${request.serverModel}.` : "";
   const hintLine = request.categoryHint ? `The technician thinks it is a ${request.categoryHint}.` : "";
-  return callVisionModel<CloseupResult>(CLOSEUP_SYSTEM, `${serverLine} ${hintLine} Read this component.`.trim(), request.imageBase64, request.mediaType, CloseupResultSchema, "closeup_result");
+  return callVisionModel<CloseupResult>(
+    CLOSEUP_SYSTEM, `${serverLine} ${hintLine} Read this component.`.trim(), request.imageBase64, request.mediaType, CloseupResultSchema, "closeup_result",
+    CLOSEUP_MAX_OUTPUT_TOKENS,
+  );
 }

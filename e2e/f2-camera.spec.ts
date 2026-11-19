@@ -36,7 +36,8 @@ test("part type selector switches the active type", async ({ page }) => {
   await startSession(page);
   await expect(page.getByTestId("feed-mode")).toBeVisible();
 
-  await page.getByTestId("part-type-PSU").click();
+  await page.getByTestId("settings-btn").click();
+  await page.getByTestId("part-type-select").selectOption("PSU");
   await page.getByTestId("fake-scan-input").fill("PSU-001");
   await page.getByTestId("inject-scan-btn").click();
   await expect(page.locator(".unit-type").first()).toHaveText("PSU");

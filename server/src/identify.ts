@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { normalizeCategory } from "../../shared/src/partCategory.js";
+import { decodePartNumber } from "../../shared/src/partDecoders.js";
 import { decideVerification, recommend, type IdentifiedBy } from "../../shared/src/recommend.js";
 import { lookupPartNumber, type LookupSource, type PartLookup } from "./lookup.js";
 
@@ -40,18 +41,20 @@ export async function buildUnit(input: IdentifyInput, knownLookup?: PartLookup |
     serial,
     lookupMatched: matchedByPartNumber,
   });
+  // The part number's own naming rules give a plain name even when no price source knows it
+  const decoded = decodePartNumber(partNumber);
   const requestedType = cleanText(input.partType);
   const partType = requestedType && requestedType.toUpperCase() !== "AUTO"
     ? normalizeCategory(requestedType)
-    : normalizeCategory(lookup?.partType ?? null);
+    : normalizeCategory(lookup?.partType ?? decoded?.category ?? null);
   return {
     lookup,
     unit: {
       partType,
       serial,
       partNumber,
-      manufacturer: cleanText(input.manufacturer),
-      description: lookup?.name ?? cleanText(input.description),
+      manufacturer: cleanText(input.manufacturer) ?? decoded?.manufacturer ?? null,
+      description: lookup?.name ?? decoded?.name ?? cleanText(input.description),
       identifiedBy: input.identifiedBy,
       evidence: cleanText(input.evidence),
       photoPath: input.photoPath,

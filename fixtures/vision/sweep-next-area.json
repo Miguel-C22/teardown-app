@@ -1,0 +1,60 @@
+{
+  "chassisModelGuess": "Dell PowerEdge R740",
+  "parts": [
+    {
+      "category": "DIMM",
+      "box": { "x": 0.05, "y": 0.20, "width": 0.30, "height": 0.40 },
+      "manufacturer": "Samsung",
+      "familyGuess": "32GB DDR4 RDIMM",
+      "printedText": [
+        { "text": "M393A4K40CB2-CTD", "kind": "partNumber", "readFromImage": true }
+      ],
+      "confidence": "medium",
+      "needsCloseUp": true,
+      "searchQuery": "Samsung 32GB DDR4 RDIMM",
+      "estimatedPriceUsd": { "low": 25, "high": 40 }
+    },
+    {
+      "category": "COOLING",
+      "box": { "x": 0.05, "y": 0.05, "width": 0.60, "height": 0.10 },
+      "manufacturer": "Dell",
+      "familyGuess": "hot-swap fan module",
+      "printedText": [],
+      "confidence": "medium",
+      "needsCloseUp": false,
+      "searchQuery": "Dell R740 hot swap fan",
+      "estimatedPriceUsd": { "low": 8, "high": 20 }
+    },
+    {
+      "category": "PSU",
+      "box": { "x": 0.70, "y": 0.70, "width": 0.22, "height": 0.25 },
+      "manufacturer": "Dell",
+      "familyGuess": "1100W hot-plug PSU",
+      "printedText": [
+        { "text": "0HW7NR", "kind": "partNumber", "readFromImage": true },
+        { "text": "CN0HW7NR7893153P0456A00", "kind": "serial", "readFromImage": true }
+      ],
+      "confidence": "high",
+      "needsCloseUp": false,
+      "searchQuery": "Dell 1100W PSU 0HW7NR",
+      "estimatedPriceUsd": { "low": 20, "high": 45 }
+    },
+    {
+      "category": "NIC",
+      "box": { "x": 0.40, "y": 0.40, "width": 0.25, "height": 0.15 },
+      "manufacturer": "Mellanox",
+      "familyGuess": "ConnectX-4 Lx OCP mezzanine NIC",
+      "printedText": [],
+      "confidence": "medium",
+      "needsCloseUp": true,
+      "searchQuery": "Mellanox ConnectX-4 Lx 25GbE OCP",
+      "estimatedPriceUsd": { "low": 20, "high": 50 }
+    }
+  ],
+  "countsByCategory": [
+    { "category": "DIMM", "count": 12 },
+    { "category": "COOLING", "count": 6 },
+    { "category": "PSU", "count": 1 },
+    { "category": "NIC", "count": 1 }
+  ]
+}

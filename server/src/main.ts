@@ -9,9 +9,10 @@ import { loadTlsFiles, localNetworkAddresses } from "./certificates";
 import { visionMode } from "./vision";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-// Secrets such as OPENAI_API_KEY live in .env on this machine only; variables already set (e.g. by tests) win
-const envFilePath = path.join(projectRoot, ".env");
-if (existsSync(envFilePath)) {
+// Secrets live in .env.local (written by neon deploy) and .env on this machine only; variables already set (e.g. by tests) win
+for (const envFileName of [".env.local", ".env"]) {
+  const envFilePath = path.join(projectRoot, envFileName);
+  if (!existsSync(envFilePath)) continue;
   for (const [name, value] of Object.entries(parseEnv(readFileSync(envFilePath, "utf8")))) {
     if (process.env[name] === undefined && value !== undefined) process.env[name] = value;
   }

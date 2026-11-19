@@ -1,0 +1,21 @@
+{
+  "chassisModelGuess": null,
+  "parts": [
+    {
+      "category": "COOLING",
+      "box": { "x": 0.15, "y": 0.10, "width": 0.70, "height": 0.80 },
+      "manufacturer": "SilverStone",
+      "familyGuess": "2U SP5 CPU cooler with heat pipes",
+      "printedText": [
+        { "text": "SilverStone", "kind": "manufacturer", "readFromImage": true }
+      ],
+      "confidence": "medium",
+      "needsCloseUp": false,
+      "searchQuery": "SilverStone XE02-SP5B 2U SP5 CPU cooler",
+      "estimatedPriceUsd": { "low": 40, "high": 70 }
+    }
+  ],
+  "countsByCategory": [
+    { "category": "COOLING", "count": 1 }
+  ]
+}

@@ -1,5 +1,7 @@
 // Longest edge sent to the vision model; larger photos cost more without reading labels better
 export const MAX_STILL_EDGE = 1568;
+// Whole-view photos only need to show what each part is, so they go smaller and come back faster
+export const SWEEP_STILL_EDGE = 1024;
 
 export interface Still {
   base64: string;

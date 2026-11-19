@@ -5,8 +5,11 @@ data/
 test-results/
 playwright-report/
 .env
+.env.local
+.env.*.local
 .vercel
 
 # Real label photos for vision:eval (may show customer asset tags)
 fixtures/photos/*
 !fixtures/photos/README.md
+.neon
