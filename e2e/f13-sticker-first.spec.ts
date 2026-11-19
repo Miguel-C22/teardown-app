@@ -31,6 +31,45 @@ test("sticker text read on the phone records the part with no AI call", async ({
   await expect(page.locator(".recent-units .unit-row")).toContainText("ST4000NM0035 · ZC9OCR77");
 });
 
+test("a Siemens barcode with a 1P prefix is recorded by its part number without AI", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("fake-scan-input").fill("1P6EP3346-7SB00-3AX0+9DRN");
+  await page.getByTestId("inject-scan-btn").click();
+  await expect(page.locator(".recent-units .unit-row")).toHaveCount(1);
+  await expect(page.locator(".recent-units .unit-row")).toContainText("6EP3346-7SB00-3AX0");
+  await expect(page.locator(".recent-units .unit-type").first()).toHaveText("PSU");
+});
+
+test("a faceplate with only a product name is recorded by that name, with all its text kept", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("fake-scan-input").fill("ocr:Cisco\\nCatalyst 9300-48P\\nSYST STAT SPD");
+  await page.getByTestId("inject-scan-btn").click();
+
+  const card = page.getByTestId("component-card").first();
+  await expect(card).toContainText("Cisco Catalyst 9300-48P");
+  await expect(card).toContainText("search: Cisco Catalyst 9300-48P");
+  await expect(card).toContainText("via sticker text");
+  await expect(card.getByTestId("card-recommendation")).toHaveText("REVIEW");
+  await expect(page.locator(".recent-units .unit-type").first()).toHaveText("NETWORK");
+
+  // Reading the same faceplate again adds nothing
+  await page.getByTestId("fake-scan-input").fill("ocr:Cisco\\nCatalyst 9300-48P");
+  await page.getByTestId("inject-scan-btn").click();
+  await expect(page.locator(".recent-units .unit-row")).toHaveCount(1);
+});
+
+test("a label with an Order No. and a brand uses both", async ({ page }) => {
+  await startSession(page);
+  await page.getByTestId("fake-scan-input").fill("ocr:SIEMENS\\nSITOP PSU8600\\nOrder No.: 6EP3346-7SB00-3AX0\\nInput 400-500V 3AC");
+  await page.getByTestId("inject-scan-btn").click();
+
+  const card = page.getByTestId("component-card").first();
+  await expect(card).toContainText("6EP3346-7SB00-3AX0");
+  await expect(card).toContainText("Siemens SITOP PSU8600");
+  await expect(card).toContainText("INPUT 400-500V 3AC");
+  await expect(page.locator(".recent-units .unit-type").first()).toHaveText("PSU");
+});
+
 test("unreadable sticker text suggests Find with AI and highlights it", async ({ page }) => {
   await startSession(page);
   await page.getByTestId("fake-scan-input").fill("ocr:smudged %%% ###");

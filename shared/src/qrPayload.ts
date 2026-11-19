@@ -63,6 +63,19 @@ function parseRawGs1(text: string): LabelField[] | null {
   return fields.length ? fields : null;
 }
 
+// Data identifiers that are safe to strip from a plain barcode; bare "P" and "S" are left alone, since many real serials start with them
+const LINEAR_DATA_IDENTIFIERS: Array<[string, FieldHint]> = [["30P", "partNumber"], ["1P", "partNumber"], ["1S", "serial"]];
+
+// A plain barcode can carry the same identifiers, e.g. "1P6EP3346-7SB00-3AX0+9DRN" (part number, then an extra field after "+")
+export function parseLinearDataIdentifier(rawText: string): LabelField[] | null {
+  const text = rawText.trim().toUpperCase();
+  const identifier = LINEAR_DATA_IDENTIFIERS.find(([prefix]) => text.startsWith(prefix));
+  if (!identifier) return null;
+  const [mainValue, ...extraValues] = text.slice(identifier[0].length).split("+").map((piece) => piece.trim());
+  if (!mainValue || mainValue.length < 4) return null;
+  return [{ text: mainValue, hint: identifier[1] }, ...extraValues.filter(Boolean).map((extra): LabelField => ({ text: extra, hint: null }))];
+}
+
 // Splits a QR, DataMatrix or PDF417 payload into separate fields; an empty list means nothing usable was found
 export function parseTwoDimensionalPayload(rawText: string): LabelField[] {
   const text = rawText.trim();

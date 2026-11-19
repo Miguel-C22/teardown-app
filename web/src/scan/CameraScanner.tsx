@@ -4,6 +4,7 @@ import { type ScanRecord, checkScan, COOLDOWN_MS } from "@shared/dedup";
 import { groupCodesIntoLabels, type DecodedCode, type LabelGroup } from "@shared/labelGroup";
 import { CATEGORY_LABEL, PART_CATEGORIES } from "@shared/partCategory";
 import { confirmRead, createSightingLog } from "@shared/readConfirm";
+import { identifyFromText } from "@shared/textIdentity";
 import { isHighValue, type IdentifiedBy } from "@shared/recommend";
 import { mergeWalkFrame } from "@shared/walkMerge";
 import {
@@ -39,7 +40,6 @@ const STEADY_DIFFERENCE = 4;
 const MOVED_DIFFERENCE = 18;
 // Sticker text is read in the background every couple of seconds while the phone moves, skipping only fast sweeps (too blurry)
 const MIN_MS_BETWEEN_OCR = 2_000;
-const QUIET_AFTER_BARCODE_MS = 1_000;
 // Signature difference above which the frame is too blurred to read text
 const TOO_FAST_FOR_TEXT = 30;
 // Two empty text reads while held still on one spot mean the free steps can't read it, so Find with AI is suggested
@@ -99,6 +99,8 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
   // Serials whose sticker text was already read for a missing part number
   const ocrTriedSerialsRef = useRef(new Set<string>());
   const guidanceRef = useRef<string>(GUIDANCE.point);
+  // Product names already recorded from text alone, so passing over the same faceplate again adds nothing
+  const recordedNamesRef = useRef(new Set<string>());
 
   const [partType, setPartType] = useState("AUTO");
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
@@ -231,7 +233,7 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
   }), [partType]);
 
   // A label with a serial is one unit; a part-number-only label asks before adding a second identical part
-  const processLabel = useCallback(async (label: LabelGroup, identifiedBy: IdentifiedBy = "barcode") => {
+  const processLabel = useCallback(async (label: LabelGroup, identifiedBy: IdentifiedBy = "barcode", extra: Partial<NewUnitRequest> = {}) => {
     const scanKey = label.serial ?? (label.partNumber ? `part:${label.partNumber}` : null);
     if (!scanKey) return;
     const now = Date.now();
@@ -239,6 +241,8 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
     if (outcome === "cooldown") return;
     if (outcome === "duplicate") {
       recentScansRef.current = [...recentScansRef.current.filter((record) => record.serial !== scanKey), { serial: scanKey, scannedAt: now }];
+      // Background text reading passes over labels already recorded all the time, so it stays quiet about them
+      if (identifiedBy === "ocr") return;
       if (label.serial) {
         showFeedback("Already recorded", "duplicate");
       } else {
@@ -251,22 +255,46 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
     // Instant on-phone confirmation; the price and recommendation follow when the server answers
     vibrate(30);
     showFeedback(`Read: ${[label.categoryHint, label.partNumber, label.serial].filter(Boolean).join(" ")}`, "new");
-    await saveUnit(labelRequest(label, identifiedBy));
+    const request = labelRequest(label, identifiedBy);
+    await saveUnit({ ...request, ...extra, manufacturer: request.manufacturer ?? extra.manufacturer ?? null });
   }, [labelRequest, saveUnit, showFeedback]);
 
-  // Sticker text becomes a part only once two separate reads agree; returns how the read went
+  // Everything the phone read is used: part numbers and serials, brands, product names; nothing becomes a part until two reads agree
   const handleOcrText = useCallback(async (text: string, requireConfirmation: boolean): Promise<"recorded" | "checking" | "nothing"> => {
     noteRawCodes(text.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => ({ text: line, source: "OCR" })));
     const labels = groupCodesIntoLabels(ocrTextToCodes(text));
-    if (!labels.length) return "nothing";
-    let recorded = false;
-    for (const label of labels) {
-      if (requireConfirmation && !confirmRead(ocrSightingsRef.current, labelKey(label), Date.now(), 2, OCR_CONFIRM_WINDOW_MS)) continue;
-      await processLabel(label, "ocr");
-      recorded = true;
+    const identity = identifyFromText(text, labels.find((label) => label.partNumber)?.partNumber ?? null);
+    // The full text and the words used to search are kept on the part, so the tech can see what it was based on
+    const evidence = [identity.allText, identity.searchQuery ? `search: ${identity.searchQuery}` : null].filter(Boolean).join(" | ") || null;
+    const extra: Partial<NewUnitRequest> = {
+      description: identity.productName, manufacturer: identity.brand, searchQuery: identity.searchQuery, evidence,
+    };
+    const now = Date.now();
+
+    if (labels.length) {
+      let recorded = false;
+      for (const label of labels) {
+        if (requireConfirmation && !confirmRead(ocrSightingsRef.current, labelKey(label), now, 2, OCR_CONFIRM_WINDOW_MS)) continue;
+        // The product name's category is used only when nothing else says what the part is
+        const typeFromName = partType === "AUTO" && !label.categoryHint && identity.category ? { partType: identity.category } : {};
+        await processLabel(label, "ocr", { ...extra, ...typeFromName });
+        recorded = true;
+      }
+      return recorded ? "recorded" : "checking";
     }
-    return recorded ? "recorded" : "checking";
-  }, [noteRawCodes, processLabel]);
+
+    // No number at all, but a product name (e.g. a faceplate saying "PowerEdge R740"): record it by name, for review
+    if (!identity.productName) return "nothing";
+    if (requireConfirmation && !confirmRead(ocrSightingsRef.current, `name:${identity.productName}`, now, 2, OCR_CONFIRM_WINDOW_MS)) return "checking";
+    if (recordedNamesRef.current.has(identity.productName)) return "recorded";
+    recordedNamesRef.current.add(identity.productName);
+    vibrate(30);
+    showFeedback(`Read: ${identity.productName}`, "new");
+    await saveUnit({
+      partType: partType !== "AUTO" ? partType : identity.category ?? "AUTO", serial: null, partNumber: null, identifiedBy: "ocr", partNumberRead: false, ...extra,
+    });
+    return "recorded";
+  }, [noteRawCodes, processLabel, saveUnit, showFeedback, partType]);
 
   // Find with AI: one look at the current view; results build up across presses without repeats
   const findWithAi = useCallback(async () => {
@@ -327,7 +355,6 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
     let previousSignature: Uint8ClampedArray | null = null;
     let steadySince: number | null = null;
     let emptyFastPasses = 0;
-    let lastBarcodeAt = 0;
     // Background sticker reading; a spot held still that reads empty twice is left alone until the phone moves
     let ocrRunning = false;
     let lastOcrAt = 0;
@@ -399,11 +426,9 @@ export function CameraScanner({ session, summary, onUnit, onUnitRemoved, onSessi
         } else if (difference < STEADY_DIFFERENCE) {
           steadySince ??= now;
         }
-        if (codes.length) lastBarcodeAt = now;
 
-        // Label text is read in the background while moving; only a very fast sweep (blurred) or a barcode just read skips it
-        const barcodeJustRead = now - lastBarcodeAt < QUIET_AFTER_BARCODE_MS;
-        if (difference < TOO_FAST_FOR_TEXT && !barcodeJustRead && !spotGivenUp && !ocrRunning && now - lastOcrAt >= MIN_MS_BETWEEN_OCR) {
+        // All text in view is read in the background while moving, labels with barcodes included; only a blurred fast sweep skips it
+        if (difference < TOO_FAST_FOR_TEXT && !spotGivenUp && !ocrRunning && now - lastOcrAt >= MIN_MS_BETWEEN_OCR) {
           readStickerAutomatically(video, steadySince !== null);
         }
 

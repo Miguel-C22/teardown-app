@@ -10,12 +10,16 @@ export interface LabelField {
 
 const PREFIX_HINTS: Array<[RegExp, FieldHint]> = [
   [/^(S\/?N|SER(IAL)?(\s*(NO|NUMBER|#))?|SERIAL\s*NUMBER|CT)$/, "serial"],
+  [/^(MFR|MFG)\s*P\/?N$|^(ORDER|ORD|ART(ICLE)?|CAT(ALOG)?|PRODUCT)\.?\s*(NO|NUMBER|#)$|^(TYPE|REF)$/, "partNumber"],
   [/^(P\/?N|PID|PART(\s*(NO|NUMBER|#))?|MODEL(\s*(NO|NUMBER))?|MDL|M\/?N|DP\/?N|SPARE(\s*(PN|P\/N))?|OPT(ION)?(\s*(PN|P\/N))?|FRU(\s*(PN|P\/N))?|SKU|PRODUCT\s*ID|MPN)$/, "partNumber"],
   [/^(VID|VER(SION)?|REV)$/, "version"],
 ];
 
-// Finds "KEY: VALUE" pairs in label text, e.g. "PID: WS-C3850-48P-S VID: V02 SN: FOC1234X0YZ"
-const KEY_VALUE = /\b(S\/?N|SERIAL(?:\s*(?:NO|NUMBER|#))?|CT|P\/?N|PID|PART(?:\s*(?:NO|NUMBER|#))?|MODEL(?:\s*(?:NO|NUMBER))?|MDL|M\/?N|DP\/?N|SPARE(?:\s*(?:PN|P\/N))?|OPT(?:ION)?(?:\s*(?:PN|P\/N))?|FRU(?:\s*(?:PN|P\/N))?|SKU|PRODUCT\s*ID|MPN|VID|VER(?:SION)?|REV)\s*[:#=.]?\s*([A-Z0-9][A-Z0-9\-/.+=]{1,40})/g;
+// Prefixes that also label everyday words ("Type: DDR4"), so their value must look like a real number to count
+const WEAK_PREFIXES = /^(TYPE|REF)$/;
+
+// Finds "KEY: VALUE" pairs in label text, e.g. "PID: WS-C3850-48P-S VID: V02 SN: FOC1234X0YZ" or "Order No.: 6EP3346-7SB00-3AX0"
+const KEY_VALUE = /\b((?:MFR|MFG)\s*P\/?N|(?:ORDER|ORD|ART(?:ICLE)?|CAT(?:ALOG)?|PRODUCT)\.?\s*(?:NO|NUMBER|#)|TYPE|REF|S\/?N|SERIAL(?:\s*(?:NO|NUMBER|#))?|CT|P\/?N|PID|PART(?:\s*(?:NO|NUMBER|#))?|MODEL(?:\s*(?:NO|NUMBER))?|MDL|M\/?N|DP\/?N|SPARE(?:\s*(?:PN|P\/N))?|OPT(?:ION)?(?:\s*(?:PN|P\/N))?|FRU(?:\s*(?:PN|P\/N))?|SKU|PRODUCT\s*ID|MPN|VID|VER(?:SION)?|REV)\s*[:#=.]{0,2}\s*([A-Z0-9][A-Z0-9\-/.+=]{1,40})/g;
 
 function hintForPrefix(prefix: string): FieldHint | null {
   const normalized = prefix.replace(/\s+/g, " ").trim();
@@ -33,7 +37,9 @@ export function extractKeyedFields(rawText: string): LabelField[] {
   for (const match of text.matchAll(KEY_VALUE)) {
     const value = cleanValue(match[2]);
     if (value.length < 2) continue;
-    fields.push({ text: value, hint: hintForPrefix(match[1]) });
+    const prefix = match[1].replace(/\s+/g, " ").trim();
+    if (WEAK_PREFIXES.test(prefix) && (value.length < 5 || !/\d/.test(value))) continue;
+    fields.push({ text: value, hint: hintForPrefix(prefix) });
   }
   return fields;
 }

@@ -37,6 +37,9 @@ const PART_NUMBER_PATTERNS: PartNumberPattern[] = [
   { pattern: /^BCM95\d{3}/, manufacturer: "Broadcom", category: "NIC" },
   { pattern: /^(9[2-6]\d\d-\d{1,2}[ie])/i, manufacturer: "Broadcom/LSI", category: "RAID" },
   { pattern: /^900-\d[A-Z0-9]{3,}/, manufacturer: "NVIDIA", category: "GPU" },
+  // Siemens order numbers (MLFB): 6EP is SITOP power supplies, 6ES7 / 6GK / 6AV are PLC, network and HMI parts
+  { pattern: /^6EP\d{4}-\d[A-Z0-9]{4}-\d[A-Z0-9]{3}$/, manufacturer: "Siemens", category: "PSU" },
+  { pattern: /^6[A-Z]{2}\d{4}-\d[A-Z0-9]{4}-\d[A-Z0-9]{3}$/, manufacturer: "Siemens", category: null },
   // Intel sSpec, laser-marked on the CPU lid (SR3B9 = Xeon Gold 6130)
   { pattern: /^S[RL][0-9A-Z]{3}$/, manufacturer: "Intel", category: "CPU" },
   // Cisco product IDs (PIDs): transceivers, power supplies, then switches, routers and their modules

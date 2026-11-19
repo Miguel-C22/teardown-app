@@ -1,7 +1,7 @@
 import { classifyCode, isUnitSerial, type ClassifiedCode } from "./barcodeClassify.js";
 import type { FieldHint } from "./labelText.js";
 import type { PartCategory } from "./partCategory.js";
-import { isTwoDimensionalFormat, parseTwoDimensionalPayload } from "./qrPayload.js";
+import { isTwoDimensionalFormat, parseLinearDataIdentifier, parseTwoDimensionalPayload } from "./qrPayload.js";
 
 export interface PixelBox {
   x: number;
@@ -21,10 +21,13 @@ export interface DecodedCode {
   fromTwoDimensional?: boolean;
 }
 
-// Replaces each 2D code with the fields inside it; a payload with nothing usable is dropped
+// Replaces each 2D code with the fields inside it (a payload with nothing usable is dropped), and splits 1D codes that start with a data identifier
 export function expandTwoDimensionalCodes(decodedCodes: DecodedCode[]): DecodedCode[] {
   return decodedCodes.flatMap((decoded) => {
-    if (!isTwoDimensionalFormat(decoded.format)) return [decoded];
+    if (!isTwoDimensionalFormat(decoded.format)) {
+      const fields = parseLinearDataIdentifier(decoded.text);
+      return fields ? fields.map((field) => ({ ...decoded, text: field.text, hint: field.hint })) : [decoded];
+    }
     return parseTwoDimensionalPayload(decoded.text).map((field) => ({ text: field.text, box: decoded.box, hint: field.hint, fromTwoDimensional: true }));
   });
 }

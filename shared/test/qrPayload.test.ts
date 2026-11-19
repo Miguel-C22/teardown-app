@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyCode } from "../src/barcodeClassify.js";
 import { groupCodesIntoLabels, type DecodedCode } from "../src/labelGroup.js";
 import { extractLabelFields } from "../src/labelText.js";
-import { isTwoDimensionalFormat, parseTwoDimensionalPayload } from "../src/qrPayload.js";
+import { isTwoDimensionalFormat, parseLinearDataIdentifier, parseTwoDimensionalPayload } from "../src/qrPayload.js";
 
 const box = (x: number, y: number) => ({ x, y, width: 200, height: 40 });
 
@@ -79,6 +79,20 @@ describe("QR codes next to barcodes", () => {
   it("a plain QR with two serial-looking values is still one part", () => {
     const codes: DecodedCode[] = [{ text: "AB12CD34EF\nZZ99YY88XX", box: box(0, 0), format: "QRCode" }];
     expect(groupCodesIntoLabels(codes)).toHaveLength(1);
+  });
+});
+
+describe("plain barcodes with a data identifier", () => {
+  it("reads a Siemens 1P barcode as its part number", () => {
+    const labels = groupCodesIntoLabels([{ text: "1P6EP3346-7SB00-3AX0+9DRN", box: box(0, 0), format: "Code128" }]);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toMatchObject({ partNumber: "6EP3346-7SB00-3AX0", manufacturerHint: "Siemens", categoryHint: "PSU", serial: null });
+  });
+
+  it("reads a 1S barcode as the serial and keeps bare P/S-starting serials untouched", () => {
+    expect(parseLinearDataIdentifier("1SZ1E41HH0")).toEqual([{ text: "Z1E41HH0", hint: "serial" }]);
+    expect(parseLinearDataIdentifier("S1AB2345")).toBeNull();
+    expect(parseLinearDataIdentifier("PX04SVQ080")).toBeNull();
   });
 });
 

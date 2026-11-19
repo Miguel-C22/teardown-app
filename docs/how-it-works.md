@@ -10,8 +10,8 @@ The free steps run by themselves. Just move the phone over the parts at a normal
 |---|---|---|
 | 1. Start | Point the phone at the server's tag. The teardown starts on its own. | Free |
 | 2. Barcodes and QR codes | Every one in view is read instantly while you move. | Free |
-| 3. Label text | For labels with no barcode, the phone reads the printed text (P/N, S/N) in the background every couple of seconds as you move. Slower than barcodes, and a very fast sweep is too blurry to read. | Free |
-| 4. Name it | The part number is turned into a plain name, e.g. "Samsung 32GB DDR4 RDIMM". | Free |
+| 3. All printed text | The phone reads all the text in view (stickers, faceplates, bezels) in the background every couple of seconds as you move. Slower than barcodes, and a very fast sweep is too blurry to read. | Free |
+| 4. Name it | It uses everything it read: part numbers and serials (with or without "P/N:", "Order No.", "Mfr P/N", "Type" and similar), the brand, and product names like "PowerEdge R740", "Catalyst 9300" or "SITOP PSU8600". A product name alone is enough to record the item. Part numbers are also turned into plain names, e.g. "Samsung 32GB DDR4 RDIMM". | Free |
 | 5. Price it | From the built-in price list (and eBay once a key is added, which is also free). | Free |
 | 6. Still unknown? | Tap **Find with AI**. It turns blue when the free steps couldn't read something, or parts are still missing. | **Paid** |
 | 7. Hardware check (optional) | A bench PC reads the part's real model and serial. See below. | Free |
@@ -20,6 +20,8 @@ The free steps run by themselves. Just move the phone over the parts at a normal
 Buttons on the scan screen: **Find with AI**, **Done**, and a small **⚙ Settings** (part type, torch, show raw codes). Each result card has **Wrong? Remove** to take out a bad read.
 
 ## Accuracy safeguards
+
+- All the text read is saved on the part ("Read: …"), with the words it searched with ("search: …"), so you can check what it was based on.
 
 - A barcode is recorded only after it reads the same way twice in a row.
 - Sticker text is recorded only when two separate reads agree, and unsure (low-confidence) text is ignored.

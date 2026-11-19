@@ -19,6 +19,14 @@ Status: `todo` · `in progress` · `checkpoint` (built, waiting for go) · `done
 
 ## Checkpoint notes
 
+### Read everything — 2026-11-19
+- Background text reading runs every ~2 s while moving (blurred fast sweeps skipped), also when barcodes are in view; repeat reads of recorded labels are silent.
+- `shared/src/textIdentity.ts`: brands, product families (PowerEdge, ProLiant, ThinkSystem, Catalyst, Nexus, PERC, Smart Array, MegaRAID, ConnectX, Xeon, EPYC, Tesla/Quadro, SITOP, SIMATIC, Smart-UPS, Seagate and WD drive families) and a search query (product name, else brand + part number). A product name alone records the item (REVIEW); all text and the search words are kept as evidence.
+- More prefixes in `shared/src/labelText.ts`: Order No., Art. No., Cat. No., Mfr/Mfg P/N, Product No., and Type / Ref only when the value looks like a number.
+- Plain barcodes with `1P` / `30P` / `1S` data identifiers are split (`parseLinearDataIdentifier`), and Siemens order numbers are recognised (6EP = PSU).
+- AI thinking setting back to `low` by default (the 400 came after `minimal`); OpenAI's reason is now logged and shown.
+- `npm test`: 180/180. `npm run e2e`: 98/98. Typecheck clean, build ok.
+
 ### Automatic scanning, AI only on request — 2026-11-19
 - Scan screen buttons: **Find with AI**, **Done**, **⚙ Settings** (part type, torch, raw codes). Removed: Read sticker, Analyze view, Identify with AI, Walk mode, the part-type row. A guidance line under the camera says what to do.
 - Sticker text is read automatically after ~1 s holding still on a view with no barcode; two empty reads highlight Find with AI.
