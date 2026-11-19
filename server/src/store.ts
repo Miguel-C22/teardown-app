@@ -16,7 +16,17 @@ export function photoDirectory(): string {
 
 // Postgres (Neon) when DATABASE_URL is set; an empty value counts as unset so tests can force local storage
 function databaseUrl(): string | null {
-  return process.env.DATABASE_URL?.trim() || null;
+  // Values copied from .env.local often keep their surrounding quotes, which make the address unreachable
+  return process.env.DATABASE_URL?.trim().replace(/^["']|["']$/g, "").trim() || null;
+}
+
+// The database host without the password, for error logs
+function databaseHost(connectionString: string): string {
+  try {
+    return new URL(connectionString).host || "(no host)";
+  } catch {
+    return "(not a valid URL)";
+  }
 }
 
 // Vercel without a database keeps data in memory only, so it can vanish between serverless instances
@@ -172,7 +182,14 @@ function getBackend(): Promise<SqlBackend> {
     return backend;
   })();
   // A failed connection is retried on the next request instead of being cached forever
-  backendPromise.catch(() => { backendPromise = null; });
+  backendPromise.catch((connectError: unknown) => {
+    backendPromise = null;
+    const connectionString = databaseUrl();
+    if (connectionString) {
+      const message = connectError instanceof Error ? connectError.message : String(connectError);
+      console.error(JSON.stringify({ event: "database_connect_failed", host: databaseHost(connectionString), message }));
+    }
+  });
   return backendPromise;
 }
 
